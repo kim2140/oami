@@ -19,7 +19,7 @@ BACKUP_DIR = "oami_backups"
 if not os.path.exists(BACKUP_DIR):
     os.makedirs(BACKUP_DIR)
 
-# 파일명 생성 함수: "SupplierName_EvaluatorName.json" 형태로 생성하여 다중 사용자 충돌 방지
+# 파일명 생성 함수
 def get_backup_filename(supplier, evaluator):
     safe_sup = "".join(c for c in supplier if c.isalnum() or c in " _-").strip()
     safe_eval = "".join(c for c in evaluator if c.isalnum() or c in " _-").strip()
@@ -212,19 +212,24 @@ if st.session_state.is_evaluating:
         tab_mobile, tab_pc = st.tabs(["📱 1. Mobile", "🖥️ 2. PC"])
         
         with tab_mobile:
-            # [UPDATE] 모바일 안내 문구 영문으로 변경
-            st.info("💡 Optimized for mobile devices (iPhone/Galaxy). If table formatting breaks, use Text Copy below.")
+            st.info("💡 **Mobile Instructions:** Long-press the table below, drag to select all, and copy manually.")
             
-            # [UPDATE] 버튼 텍스트 영문으로 변경
-            html_table_mobile = df.to_html(index=False).replace('<table border="1" class="dataframe">', '<table border="1" cellpadding="4" style="border-collapse: collapse; text-align: left; font-family: Arial; width: 100%; font-size: 12px; line-height: 1.2;">')
-            email_html_mobile = f"<div id='mobile-email-content' style='background:#ffffff; padding:5px;'><h4 style='margin:0 0 5px 0;'>OAMI: {st.session_state.master_info['supplier']}</h4><p style='font-size:12px; margin:0 0 5px 0;'>Avg: <b>{oami_avg:.2f}</b></p>{html_table_mobile}</div>"
-            copy_html_mobile = f"<button onclick='copyMobileTable()' style='width:100%;height:40px;background:#0d6efd;color:white;border:none;border-radius:5px;cursor:pointer;font-weight:bold;margin-bottom:10px;'>📋 Copy as Table</button><script>function copyMobileTable(){{var body=document.getElementById('mobile-email-content');var range=document.createRange();range.selectNode(body);window.getSelection().removeAllRanges();window.getSelection().addRange(range);try{{document.execCommand('copy');alert('Table Copied! (Open Mail App)');}}catch(e){{alert('Copy failed. Try Text Copy below.');}}window.getSelection().removeAllRanges();}}</script>"
-            components.html(copy_html_mobile + email_html_mobile, height=300, scrolling=True)
+            # [UPDATE] 모바일에서 버튼(JS) 대신 직접 손가락으로 드래그할 수 있도록 HTML을 화면에 바로 뿌려줍니다.
+            # iframe을 거치지 않으므로 스마트폰의 네이티브 텍스트 선택 기능이 완벽하게 작동합니다.
+            html_table_mobile = df.to_html(index=False).replace(
+                '<table border="1" class="dataframe">', 
+                '<table border="1" cellpadding="6" style="border-collapse: collapse; text-align: left; font-family: Arial; width: 100%; font-size: 13px; line-height: 1.3; background-color: white;">'
+            )
+            
+            # st.markdown을 사용해 화면에 표를 그대로 노출
+            st.markdown(f"#### OAMI Report: {st.session_state.master_info['supplier']}")
+            st.markdown(f"**Average OAMI: {oami_avg:.2f} / 5.0**")
+            st.markdown(html_table_mobile, unsafe_allow_html=True)
             
             st.write("---")
-            # [UPDATE] 텍스트 복사 안내 영문으로 변경
-            st.write("**🔽 Fallback: Copy as Text**")
+            st.write("**🔽 Fallback: Text Copy (If table fails)**")
             
+            # 텍스트 복사용 (예비책)
             text_report = f"OAMI Report: {st.session_state.master_info['supplier']}\nAvg: {oami_avg:.2f}\n"
             text_report += "No | Process | Type | PAMI | Description | Remark | Time\n"
             for _, row in df.iterrows():
@@ -232,7 +237,6 @@ if st.session_state.is_evaluating:
             st.code(text_report, language="text")
 
         with tab_pc:
-            # [UPDATE] PC 안내 문구 영문으로 변경
             st.info("💡 Wide and clean table copy optimized for PC environments.")
             html_table = df.to_html(index=False).replace('<table border="1" class="dataframe">', '<table border="1" cellpadding="8" style="border-collapse: collapse; text-align: left; font-family: Arial; width: 100%;">')
             email_html = f"<div id='pc-email-content' style='background:#f8f9fa; padding:15px;'><h3>OAMI Report: {st.session_state.master_info['supplier']}</h3><p>Avg: {oami_avg:.2f}</p>{html_table}</div>"
