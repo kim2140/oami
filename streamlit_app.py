@@ -7,24 +7,24 @@ import os
 import glob 
 import time 
 
-# [UPDATE] 브라우저 탭 아이콘 및 제목 영문 설정 (이 부분이 덮어씌워져야 탭 이름이 바뀝니다)
+# 브라우저 탭 아이콘 및 제목 영문 설정
 st.set_page_config(page_title="Supplier OAMI", page_icon="📝", layout="centered")
 
 # 메인 타이틀
 st.title("📝 Supplier OAMI Evaluation App")
 
-# [NEW] 단일 파일 충돌을 막기 위해 백업 전용 '폴더'를 생성합니다.
+# 백업 전용 폴더 생성
 BACKUP_DIR = "oami_backups"
 if not os.path.exists(BACKUP_DIR):
     os.makedirs(BACKUP_DIR)
 
-# [NEW] 파일명 생성 함수: 동시 접속 충돌을 막기 위해 반드시 "업체명_평가자명.json"으로 개별 생성합니다.
+# 파일명 생성 함수: "업체명_평가자명.json"
 def get_backup_filename(supplier, evaluator):
     safe_sup = "".join(c for c in supplier if c.isalnum() or c in " _-").strip()
     safe_eval = "".join(c for c in evaluator if c.isalnum() or c in " _-").strip()
     return os.path.join(BACKUP_DIR, f"{safe_sup}_{safe_eval}.json")
 
-# 오래된 백업 파일 정리 함수: 3일(3 * 24시간)이 지난 파일은 자동으로 삭제합니다.
+# 오래된 백업 파일 정리 함수 (3일 기준)
 def cleanup_old_backups():
     now = time.time()
     for f in glob.glob(os.path.join(BACKUP_DIR, "*.json")):
@@ -34,11 +34,10 @@ def cleanup_old_backups():
             except:
                 pass
 
-# 실시간 자동 백업 함수 (업체명_평가자명 파일로 개별 저장)
+# 실시간 자동 백업 함수
 def save_temp_backup():
     if st.session_state.get("stop_backup", False):
         return
-    
     supplier = st.session_state.master_info.get("supplier", "")
     evaluator = st.session_state.master_info.get("evaluator", "")
     if not supplier or not evaluator: return
@@ -48,12 +47,11 @@ def save_temp_backup():
         "list": st.session_state.process_list,
         "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
-    # 이전의 단일 파일 방식이 아닌, 사용자별로 독립된 파일에 저장합니다.
     fname = get_backup_filename(supplier, evaluator)
     with open(fname, "w", encoding="utf-8") as f:
         json.dump(backup_data, f, ensure_ascii=False, indent=4)
 
-# 엑셀 다운로드 시 실행될 콜백 함수: 백업을 중단하고 기존 파일을 즉시 삭제합니다.
+# 엑셀 다운로드 시 실행될 콜백 함수
 def handle_download():
     st.session_state.stop_backup = True
     supplier = st.session_state.master_info.get("supplier", "")
@@ -65,6 +63,42 @@ def handle_download():
                 os.remove(fname)
             except:
                 pass
+
+# [NEW] 폼 제출 시 실행될 콜백 함수 (조건부 초기화 로직)
+# 에러가 있으면 창을 비우지 않고, 성공 시에만 창을 비웁니다.
+def process_form_submit():
+    p_name = st.session_state.p_name_input
+    p_desc = st.session_state.p_desc_input
+    p_type = st.session_state.p_type_input
+    p_score = st.session_state.p_score_input
+    p_remark = st.session_state.p_remark_input
+    
+    if not p_desc or p_type is None or p_score is None:
+        st.session_state.pami_form_error = "🚨 Fill in Description, Type, and Score."
+    else:
+        st.session_state.pami_form_error = "" # 에러 메시지 초기화
+        current_no = len(st.session_state.process_list) + 1
+        new_process = {
+            "Supplier": st.session_state.master_info["supplier"],
+            "Evaluator": st.session_state.master_info["evaluator"],
+            "No.": current_no,
+            "Process": p_name if p_name else "N/A",
+            "Type": p_type,
+            "Description": p_desc,
+            "PAMI": p_score,
+            "Remark": p_remark if p_remark else "",
+            "Time": datetime.now().strftime("%H:%M:%S")
+        }
+        st.session_state.process_list.append(new_process)
+        save_temp_backup()
+        st.session_state.success_toast = f"Added No.{current_no}"
+        
+        # [UPDATE] 성공적으로 리스트에 추가되었을 때만 입력 필드를 비워줍니다.
+        st.session_state.p_name_input = ""
+        st.session_state.p_desc_input = ""
+        st.session_state.p_type_input = None
+        st.session_state.p_score_input = None
+        st.session_state.p_remark_input = ""
 
 # 앱 시작 시 3일 전 백업 파일 청소
 cleanup_old_backups()
@@ -80,11 +114,18 @@ if 'stop_backup' not in st.session_state:
     st.session_state.stop_backup = False
 if 'show_confirm_clear' not in st.session_state:
     st.session_state.show_confirm_clear = False
+if 'pami_form_error' not in st.session_state:
+    st.session_state.pami_form_error = ""
+if 'success_toast' not in st.session_state:
+    st.session_state.success_toast = ""
+
+# 성공 메시지(Toast)가 있으면 화면에 띄우고 지움
+if st.session_state.success_toast:
+    st.toast(st.session_state.success_toast)
+    st.session_state.success_toast = ""
 
 # 2. Step 1: 업체 및 평가자 정보
 with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=not st.session_state.is_evaluating):
-    
-    # 과거 3일치 백업 데이터 목록 불러오기
     backup_files = glob.glob(os.path.join(BACKUP_DIR, "*.json"))
     if backup_files and not st.session_state.is_evaluating:
         st.subheader("Check Backup History (Past 3 Days)")
@@ -133,39 +174,28 @@ if st.session_state.is_evaluating:
         st.warning("⚠️ CSV downloaded. Automatic backup is now disabled for this session.")
         
     # 3. Step 2: 공정별 상세 평가 입력
-    with st.form("pami_input_form", clear_on_submit=True):
+    # [UPDATE] clear_on_submit을 False로 설정하여, 에러가 나도 사용자가 친 데이터가 날아가지 않게 방지합니다.
+    with st.form("pami_input_form", clear_on_submit=False):
         st.subheader("📝 Step 2: PAMI Input per Process")
         
-        p_name = st.text_input("Process Name (Optional)")
-        p_desc = st.text_input("Description - Required*", placeholder="Enter details...")
+        # [UPDATE] 에러가 발생했다면 상단에 메시지를 표시합니다.
+        if st.session_state.pami_form_error:
+            st.error(st.session_state.pami_form_error)
+        
+        # [UPDATE] 각 위젯에 고유 key를 부여하여 콜백 함수에서 데이터에 접근할 수 있게 합니다.
+        st.text_input("Process Name (Optional)", key="p_name_input")
+        st.text_input("Description - Required*", placeholder="Enter details...", key="p_desc_input")
 
         st.write("Process Type - Required*")
-        p_type = st.radio("Type", options=["MH", "P", "WIP"], index=None, horizontal=True, label_visibility="collapsed")
+        st.radio("Type", options=["MH", "P", "WIP"], index=None, horizontal=True, label_visibility="collapsed", key="p_type_input")
         
         st.write("PAMI Score (1~5) - Required*")
-        p_score = st.radio("Score", options=[1, 2, 3, 4, 5], index=None, horizontal=True, label_visibility="collapsed")
+        st.radio("Score", options=[1, 2, 3, 4, 5], index=None, horizontal=True, label_visibility="collapsed", key="p_score_input")
         
-        p_remark = st.text_input("Remark (Optional)")
+        st.text_input("Remark (Optional)", key="p_remark_input")
         
-        if st.form_submit_button("Add to List"):
-            if not p_desc or p_type is None or p_score is None:
-                st.error("🚨 Fill in Description, Type, and Score.")
-            else:
-                current_no = len(st.session_state.process_list) + 1
-                new_process = {
-                    "Supplier": st.session_state.master_info["supplier"],
-                    "Evaluator": st.session_state.master_info["evaluator"],
-                    "No.": current_no,
-                    "Process": p_name if p_name else "N/A",
-                    "Type": p_type,
-                    "Description": p_desc,
-                    "PAMI": p_score,
-                    "Remark": p_remark if p_remark else "",
-                    "Time": datetime.now().strftime("%H:%M:%S")
-                }
-                st.session_state.process_list.append(new_process)
-                save_temp_backup()
-                st.toast(f"Added No.{current_no}")
+        # [UPDATE] 제출 버튼 클릭 시 process_form_submit 콜백 함수를 실행시킵니다.
+        st.form_submit_button("Add to List", on_click=process_form_submit)
 
     # 4. 결과 요약 및 내보내기
     if st.session_state.process_list:
@@ -248,11 +278,21 @@ if st.session_state.is_evaluating:
                             except:
                                 pass
                     
+                    # 모든 상태 초기화
                     st.session_state.master_info = {"supplier": "", "evaluator": ""}
                     st.session_state.process_list = []
                     st.session_state.is_evaluating = False 
                     st.session_state.stop_backup = False
                     st.session_state.show_confirm_clear = False 
+                    st.session_state.pami_form_error = "" # 에러 초기화
+                    
+                    # 입력 폼 위젯 상태도 강제 초기화
+                    if 'p_name_input' in st.session_state: st.session_state.p_name_input = ""
+                    if 'p_desc_input' in st.session_state: st.session_state.p_desc_input = ""
+                    if 'p_type_input' in st.session_state: st.session_state.p_type_input = None
+                    if 'p_score_input' in st.session_state: st.session_state.p_score_input = None
+                    if 'p_remark_input' in st.session_state: st.session_state.p_remark_input = ""
+                    
                     st.rerun()
             with col_no:
                 if st.button("❌ No, Cancel", use_container_width=True):
