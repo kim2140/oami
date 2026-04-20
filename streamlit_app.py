@@ -52,19 +52,25 @@ def save_temp_backup():
     with open(fname, "w", encoding="utf-8") as f:
         json.dump(backup_data, f, ensure_ascii=False, indent=4)
 
-# 엑셀 다운로드 클릭 시 실행될 콜백 함수
+# [UPDATE] 엑셀 다운로드 클릭 시 실행될 콜백 함수 (체크박스 옵션 반영)
 def handle_download():
-    st.session_state.stop_backup = True
-    supplier = st.session_state.master_info.get("supplier", "")
-    evaluator = st.session_state.master_info.get("evaluator", "")
-    if supplier and evaluator:
-        fname = get_backup_filename(supplier, evaluator)
-        if os.path.exists(fname):
-            try:
-                os.remove(fname)
-            except:
-                pass
-    st.session_state.download_completed = True
+    # 사용자가 체크박스를 선택하여 삭제를 원할 때만 파일 삭제 로직을 수행합니다.
+    if st.session_state.get("delete_backup_checkbox", True):
+        st.session_state.stop_backup = True
+        supplier = st.session_state.master_info.get("supplier", "")
+        evaluator = st.session_state.master_info.get("evaluator", "")
+        if supplier and evaluator:
+            fname = get_backup_filename(supplier, evaluator)
+            if os.path.exists(fname):
+                try:
+                    os.remove(fname)
+                except:
+                    pass
+        st.session_state.download_action_status = "deleted"
+    else:
+        # 삭제하지 않는 옵션 선택 시, 백업을 중단하지 않고 유지합니다.
+        st.session_state.stop_backup = False
+        st.session_state.download_action_status = "kept"
 
 # 폼 제출 프로세스 (조건부 초기화)
 def process_form_submit():
@@ -113,8 +119,9 @@ if 'is_evaluating' not in st.session_state:
     st.session_state.is_evaluating = False
 if 'stop_backup' not in st.session_state:
     st.session_state.stop_backup = False
-if 'download_completed' not in st.session_state:
-    st.session_state.download_completed = False
+# [UPDATE] 기존 download_completed 대신 삭제/유지 상태를 기록하는 변수로 변경
+if 'download_action_status' not in st.session_state:
+    st.session_state.download_action_status = None
 if 'show_confirm_clear' not in st.session_state:
     st.session_state.show_confirm_clear = False
 if 'pami_form_error' not in st.session_state:
@@ -149,7 +156,7 @@ with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=not st.sessi
                     st.session_state.process_list = backup_options[selected_backup]['list']
                     st.session_state.is_evaluating = True
                     st.session_state.stop_backup = False
-                    st.session_state.download_completed = False
+                    st.session_state.download_action_status = None # 상태 초기화
                     st.rerun()
         st.write("---")
     
@@ -212,7 +219,6 @@ if st.session_state.is_evaluating:
         tab_mobile, tab_pc = st.tabs(["📱 1. Mobile (Text)", "🖥️ 2. PC (Table)"])
         
         with tab_mobile:
-            # [UPDATE] 안내 문구를 Outlook 전용으로 수정했습니다.
             st.info("💡 **Tip:** Click the copy button below and paste it into your Outlook Mail App.")
             
             raw_text = f"Supplier: {st.session_state.master_info['supplier']} | Evaluator: {st.session_state.master_info['evaluator']} | Processes: {total_processes} | Avg OAMI: {oami_avg:.2f}\n"
@@ -220,7 +226,6 @@ if st.session_state.is_evaluating:
             for _, row in df.iterrows():
                 raw_text += f"{row['No.']}|{row['Process']}|{row['Type']}|{row['PAMI']}|{row['Description']}|{row['Remark']}|{row['Time']}\n"
 
-            # [UPDATE] 버튼 텍스트와 JS 로직 내 텍스트를 "Copy Text for Outlook"으로 변경했습니다.
             copy_text_html = f"""
             <textarea id="copyText" style="position: absolute; left: -9999px;">{raw_text}</textarea>
             <button onclick="copyToClipboard()" style="width: 100%; height: 40px; background-color: #0d6efd; color: white; border: none; border-radius: 5px; font-weight: bold; font-size: 16px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
@@ -286,7 +291,6 @@ if st.session_state.is_evaluating:
 
         st.write("")
         
-        # [UPDATE] 하단 앱 실행 버튼을 다시 'Open Outlook Mail App'으로 복구했습니다. (Outlook 블루 색상 적용)
         subject = f"OAMI Evaluation - {st.session_state.master_info['supplier']} OAMI - {oami_avg:.2f}"
         mail_link = f"mailto:?subject={urllib.parse.quote(subject)}"
         st.markdown(f'<a href="{mail_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:45px; border-radius:5px; border:none; cursor:pointer; background-color:#0078D4; color:white; font-weight:bold; font-size:16px;">📨 Open Outlook Mail App</button></a>', unsafe_allow_html=True)
@@ -294,6 +298,9 @@ if st.session_state.is_evaluating:
         st.write("---")
         
         st.warning("⚠️ **Warning:** System backups are temporary and can be deleted at any time. **You must download the CSV file to keep your data permanently.**")
+        
+        # [UPDATE] 삭제 여부를 결정하는 체크박스 추가 (기본값: 체크됨)
+        st.checkbox("🗑️ Delete system backup file after download (Recommended for security)", value=True, key="delete_backup_checkbox")
         
         csv_data = df.to_csv(index=False, encoding='utf-8-sig')
         st.download_button(
@@ -305,8 +312,11 @@ if st.session_state.is_evaluating:
             on_click=handle_download
         )
 
-        if st.session_state.download_completed:
+        # [UPDATE] 다운로드 후, 체크박스 선택 결과에 따라 각기 다른 메시지 출력
+        if st.session_state.download_action_status == "deleted":
             st.success("✅ System report has been deleted. Please save it in the appropriate folder.")
+        elif st.session_state.download_action_status == "kept":
+            st.info("ℹ️ CSV downloaded successfully. The system backup remains on the server.")
 
         # 데이터 초기화 (Yes/No)
         if not st.session_state.show_confirm_clear:
@@ -328,7 +338,7 @@ if st.session_state.is_evaluating:
                     st.session_state.process_list = []
                     st.session_state.is_evaluating = False 
                     st.session_state.stop_backup = False
-                    st.session_state.download_completed = False
+                    st.session_state.download_action_status = None # 상태 초기화
                     st.session_state.show_confirm_clear = False 
                     
                     if 'p_name_input' in st.session_state: st.session_state.p_name_input = ""
