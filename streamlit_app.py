@@ -209,19 +209,16 @@ if st.session_state.is_evaluating:
         with m_col2:
             st.metric(label="Total OAMI Average", value=f"{oami_avg:.2f} / 5.0")
         
-        # [UPDATE] 탭을 다시 Mobile(Text)과 PC(Table)로 분리 복구했습니다.
         tab_mobile, tab_pc = st.tabs(["📱 1. Mobile (Text)", "🖥️ 2. PC (Table)"])
         
         with tab_mobile:
             st.info("💡 **Excel Tip:** Click the copy button below, paste into Excel, and use `Data > Text to Columns` with the `|` delimiter.")
             
-            # 파이프(|) 구분 텍스트 로직 유지
-            raw_text = f"Supplier: {st.session_state.master_info['supplier']} | Evaluator: {st.session_state.master_info['evaluator']} | Avg OAMI: {oami_avg:.2f}\n"
+            raw_text = f"Supplier: {st.session_state.master_info['supplier']} | Evaluator: {st.session_state.master_info['evaluator']} | Processes: {total_processes} | Avg OAMI: {oami_avg:.2f}\n"
             raw_text += "No.|Process|Type|PAMI|Description|Remark|Time\n"
             for _, row in df.iterrows():
                 raw_text += f"{row['No.']}|{row['Process']}|{row['Type']}|{row['PAMI']}|{row['Description']}|{row['Remark']}|{row['Time']}\n"
 
-            # [UPDATE] 텍스트 복사 버튼의 크기를 이전 형태(높이 40px, 폰트 16px)로 되돌렸습니다.
             copy_text_html = f"""
             <textarea id="copyText" style="position: absolute; left: -9999px;">{raw_text}</textarea>
             <button onclick="copyToClipboard()" style="width: 100%; height: 40px; background-color: #0d6efd; color: white; border: none; border-radius: 5px; font-weight: bold; font-size: 16px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
@@ -249,15 +246,13 @@ if st.session_state.is_evaluating:
             """
             components.html(copy_text_html, height=50)
             
-            # 화면에 텍스트 노출
             st.code(raw_text, language="text")
 
         with tab_pc:
             st.info("💡 Wide and clean table copy optimized for PC environments.")
             html_table = df.to_html(index=False).replace('<table border="1" class="dataframe">', '<table border="1" cellpadding="8" style="border-collapse: collapse; text-align: left; font-family: Arial; width: 100%;">')
-            email_html = f"<div id='pc-email-content' style='background:#f8f9fa; padding:15px;'><h3>OAMI Report: {st.session_state.master_info['supplier']}</h3><p>Avg: {oami_avg:.2f}</p>{html_table}</div>"
+            email_html = f"<div id='pc-email-content' style='background:#f8f9fa; padding:15px;'><h3 style='margin-top:0;'>OAMI Report: {st.session_state.master_info['supplier']}</h3><p><strong>Total Processes:</strong> {total_processes}</p><p><strong>Average OAMI: <span style='color:blue;'>{oami_avg:.2f} / 5.0</span></strong></p>{html_table}</div>"
             
-            # [UPDATE] 표 서식 복사 버튼 역시 일반 사이즈로 통일했습니다.
             copy_table_html = f"""
             <button onclick='copyPCTable()' style='width:100%; height:40px; background-color:#28a745; color:white; border:none; border-radius:5px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
                 📋 Copy Table for Outlook
@@ -288,9 +283,10 @@ if st.session_state.is_evaluating:
             components.html(copy_table_html + email_html, height=450, scrolling=True)
 
         st.write("")
-        subject = f"OAMI Evaluation - {st.session_state.master_info['supplier']} OAMI - {oami_avg:.2f}"
-        mail_link = f"mailto:?subject={urllib.parse.quote(subject)}"
-        st.markdown(f'<a href="{mail_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:45px; border-radius:5px; border:none; cursor:pointer; background-color:#333333; color:white; font-weight:bold; font-size:16px;">📨 Open Mail App</button></a>', unsafe_allow_html=True)
+        
+        # [UPDATE] 메일 앱 대신 엑셀 앱을 실행하도록 링크(ms-excel:)와 버튼 색상/이름을 변경했습니다.
+        excel_link = "ms-excel:"
+        st.markdown(f'<a href="{excel_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:45px; border-radius:5px; border:none; cursor:pointer; background-color:#107C41; color:white; font-weight:bold; font-size:16px;">📊 Open Excel App</button></a>', unsafe_allow_html=True)
 
         st.write("---")
         
