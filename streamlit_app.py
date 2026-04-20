@@ -14,7 +14,7 @@ st.title("📝 Supplier OAMI Evaluation App")
 # 백업 파일 경로 정의 (서버 내 임시 파일)
 BACKUP_FILE = "oami_temp_backup.json"
 
-# [NEW] 실시간 자동 백업 함수: 데이터가 변할 때마다 호출됩니다.
+# 실시간 자동 백업 함수: 데이터가 변할 때마다 호출됩니다.
 def save_temp_backup():
     backup_data = {
         "info": st.session_state.master_info,
@@ -24,7 +24,7 @@ def save_temp_backup():
     with open(BACKUP_FILE, "w", encoding="utf-8") as f:
         json.dump(backup_data, f, ensure_ascii=False, indent=4)
 
-# [NEW] 백업 데이터 불러오기 함수
+# 백업 데이터 불러오기 함수
 def load_temp_backup():
     if os.path.exists(BACKUP_FILE):
         with open(BACKUP_FILE, "r", encoding="utf-8") as f:
@@ -40,7 +40,7 @@ if 'process_list' not in st.session_state:
 # 2. Step 1: 업체 및 평가자 정보 (백업 확인 기능 포함)
 with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=st.session_state.master_info["supplier"] == ""):
     
-    # [NEW] 백업 데이터 확인 섹션
+    # 백업 데이터 확인 섹션
     st.subheader("Check Backup History")
     backup = load_temp_backup()
     if backup:
@@ -105,7 +105,7 @@ if st.session_state.master_info["supplier"] and st.session_state.master_info["ev
                     "Time": datetime.now().strftime("%H:%M:%S")
                 }
                 st.session_state.process_list.append(new_process)
-                save_temp_backup() # [NEW] 프로세스 추가 시마다 실시간 자동 백업
+                save_temp_backup() # 프로세스 추가 시마다 실시간 자동 백업
                 st.toast(f"Added No.{current_no}")
 
     # 4. 결과 요약 및 내보내기
@@ -130,24 +130,38 @@ if st.session_state.master_info["supplier"] and st.session_state.master_info["ev
         tab_text, tab_table = st.tabs(["📱 1. Mobile (Text)", "🖥️ 2. PC (Table)"])
         
         with tab_text:
-            text_report = f"OAMI Evaluation: {st.session_state.master_info['supplier']}\nAvg: {oami_avg:.2f}\n"
-            text_report += "No | Type | Process | PAMI | Description\n"
-            for _, row in df.iterrows():
-                text_report += f"{row['No']} | {row['Type']} | {row['Process']} | {row['PAMI']}pt | {row['Description']}\n"
+            st.info("💡 Best for Mobile. Click the copy icon.")
+            
+            # [UPDATE] 모바일 출력용 텍스트 양식 복구 (마침표 에러 수정 및 Remark, Time 항목 추가)
+            text_report = f"===================================================\n"
+            text_report += f"              OAMI Evaluation Report\n"
+            text_report += f"===================================================\n"
+            text_report += f"▶ Supplier : {st.session_state.master_info['supplier']}\n"
+            text_report += f"▶ Evaluator: {st.session_state.master_info['evaluator']}\n"
+            text_report += f"▶ Processes: {total_processes}\n"
+            text_report += f"▶ Avg OAMI : {oami_avg:.2f} / 5.0\n"
+            text_report += f"---------------------------------------------------\n"
+            text_report += f"No. | Process | Type | PAMI | Description | Remark | Time\n"
+            text_report += f"---------------------------------------------------\n"
+            for i, row in df.iterrows():
+                # [UPDATE] KeyError 'No'를 방지하기 위해 row['No.']로 수정했습니다.
+                text_report += f"{row['No.']:<3} | {row['Process']} | {row['Type']:<4} | {row['PAMI']}pt | {row['Description']} | {row['Remark']} | {row['Time']}\n"
+            text_report += f"==================================================="
             st.code(text_report, language="text")
 
         with tab_table:
             # HTML 표 생성
             import streamlit.components.v1 as components
             html_table = df.to_html(index=False).replace('<table border="1" class="dataframe">', '<table border="1" cellpadding="8" style="border-collapse: collapse; text-align: left; font-family: Arial; width: 100%;">')
-            email_html = f"<div id='email-content' style='background:#f8f9fa; padding:15px;'><h3>OAMI Report: {st.session_state.master_info['supplier']}</h3><p>Processes: {total_processes} / Avg: {oami_avg:.2f}</p>{html_table}</div>"
-            copy_button_html = f"<button onclick='copyTable()' style='width:100%;height:40px;background:#28a745;color:white;border:none;border-radius:5px;cursor:pointer;font-weight:bold;'>📋 Copy Table for Outlook</button><script>function copyTable(){{var body=document.getElementById('email-content');var range=document.createRange();range.selectNode(body);window.getSelection().removeAllRanges();window.getSelection().addRange(range);document.execCommand('copy');alert('Table Copied!');}}</script>"
+            email_html = f"<div id='email-content' style='background:#f8f9fa; padding:15px;'><h3 style='margin-top:0;'>OAMI Report: {st.session_state.master_info['supplier']}</h3><p><strong>Total Processes:</strong> {total_processes}</p><p><strong>Average OAMI: <span style='color:blue;'>{oami_avg:.2f} / 5.0</span></strong></p>{html_table}</div>"
+            copy_button_html = f"<div style='margin-bottom:10px;'><button onclick='copyTable()' style='width:100%;height:40px;background:#28a745;color:white;border:none;border-radius:5px;cursor:pointer;font-weight:bold;'>📋 Copy Table for Outlook</button></div><script>function copyTable(){{var body=document.getElementById('email-content');var range=document.createRange();range.selectNode(body);window.getSelection().removeAllRanges();window.getSelection().addRange(range);try{{document.execCommand('copy');alert('Table Copied! Paste into Outlook.');}}catch(e){{alert('Copy failed.');}}window.getSelection().removeAllRanges();}}</script>"
             components.html(copy_button_html + email_html, height=450, scrolling=True)
 
+        st.write("")
         # Outlook 실행
         subject = f"OAMI Evaluation - {st.session_state.master_info['supplier']} OAMI - {oami_avg:.2f}"
         mail_link = f"mailto:?subject={urllib.parse.quote(subject)}"
-        st.markdown(f'<a href="{mail_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:45px; border-radius:5px; border:none; cursor:pointer; background-color:#0078D4; color:white; font-weight:bold;">📨 Open Outlook Mail App</button></a>', unsafe_allow_html=True)
+        st.markdown(f'<a href="{mail_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:45px; border-radius:5px; border:none; cursor:pointer; background-color:#0078D4; color:white; font-weight:bold; font-size:16px;">📨 Open Outlook Mail App</button></a>', unsafe_allow_html=True)
 
         st.write("---")
         # 데이터 리셋 (백업 파일도 함께 삭제)
