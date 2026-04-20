@@ -209,46 +209,83 @@ if st.session_state.is_evaluating:
         with m_col2:
             st.metric(label="Total OAMI Average", value=f"{oami_avg:.2f} / 5.0")
         
-        # [UPDATE] 탭을 없애고 직관적인 텍스트 기반 단일 화면으로 통합했습니다.
-        st.info("💡 **Excel Tip:** Click the big button below, paste into Excel, and use `Data > Text to Columns` with the `|` delimiter.")
+        # [UPDATE] 탭을 다시 Mobile(Text)과 PC(Table)로 분리 복구했습니다.
+        tab_mobile, tab_pc = st.tabs(["📱 1. Mobile (Text)", "🖥️ 2. PC (Table)"])
         
-        # [UPDATE] 띄어쓰기 여백을 모두 없애고 오직 '|' 기호로만 데이터를 구분합니다.
-        raw_text = f"Supplier: {st.session_state.master_info['supplier']} | Evaluator: {st.session_state.master_info['evaluator']} | Avg OAMI: {oami_avg:.2f}\n"
-        raw_text += "No.|Process|Type|PAMI|Description|Remark|Time\n"
-        for _, row in df.iterrows():
-            raw_text += f"{row['No.']}|{row['Process']}|{row['Type']}|{row['PAMI']}|{row['Description']}|{row['Remark']}|{row['Time']}\n"
+        with tab_mobile:
+            st.info("💡 **Excel Tip:** Click the copy button below, paste into Excel, and use `Data > Text to Columns` with the `|` delimiter.")
+            
+            # 파이프(|) 구분 텍스트 로직 유지
+            raw_text = f"Supplier: {st.session_state.master_info['supplier']} | Evaluator: {st.session_state.master_info['evaluator']} | Avg OAMI: {oami_avg:.2f}\n"
+            raw_text += "No.|Process|Type|PAMI|Description|Remark|Time\n"
+            for _, row in df.iterrows():
+                raw_text += f"{row['No.']}|{row['Process']}|{row['Type']}|{row['PAMI']}|{row['Description']}|{row['Remark']}|{row['Time']}\n"
 
-        # [UPDATE] 매우 크고 터치하기 쉬운 복사 버튼(HTML/JS)
-        # 텍스트 데이터는 숨겨진 textarea에 담아두고 자바스크립트로 복사합니다.
-        copy_html = f"""
-        <textarea id="copyText" style="position: absolute; left: -9999px;">{raw_text}</textarea>
-        <button onclick="copyToClipboard()" style="width: 100%; height: 60px; background-color: #0d6efd; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 20px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-            📋 COPY DATA FOR EXCEL
-        </button>
-        <script>
-        function copyToClipboard() {{
-            var copyText = document.getElementById("copyText");
-            copyText.select();
-            copyText.setSelectionRange(0, 99999); /* For mobile devices */
-            try {{
-                document.execCommand("copy");
-                var btn = document.querySelector('button');
-                btn.innerText = '✅ COPIED! (Ready to Paste)';
-                btn.style.backgroundColor = '#198754';
-                setTimeout(function(){{
-                    btn.innerText = '📋 COPY DATA FOR EXCEL';
-                    btn.style.backgroundColor = '#0d6efd';
-                }}, 2000);
-            }} catch (err) {{
-                alert("Copy failed. Please copy the text block manually.");
+            # [UPDATE] 텍스트 복사 버튼의 크기를 이전 형태(높이 40px, 폰트 16px)로 되돌렸습니다.
+            copy_text_html = f"""
+            <textarea id="copyText" style="position: absolute; left: -9999px;">{raw_text}</textarea>
+            <button onclick="copyToClipboard()" style="width: 100%; height: 40px; background-color: #0d6efd; color: white; border: none; border-radius: 5px; font-weight: bold; font-size: 16px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                📋 Copy Text for Excel
+            </button>
+            <script>
+            function copyToClipboard() {{
+                var copyText = document.getElementById("copyText");
+                copyText.select();
+                copyText.setSelectionRange(0, 99999); /* For mobile devices */
+                try {{
+                    document.execCommand("copy");
+                    var btn = document.querySelector('button');
+                    btn.innerText = '✅ Copied!';
+                    btn.style.backgroundColor = '#198754';
+                    setTimeout(function(){{
+                        btn.innerText = '📋 Copy Text for Excel';
+                        btn.style.backgroundColor = '#0d6efd';
+                    }}, 2000);
+                }} catch (err) {{
+                    alert("Copy failed. Please copy the text block manually.");
+                }}
             }}
-        }}
-        </script>
-        """
-        components.html(copy_html, height=80)
-        
-        # 복사될 텍스트의 내용을 사용자가 확인할 수 있도록 화면에 노출합니다.
-        st.code(raw_text, language="text")
+            </script>
+            """
+            components.html(copy_text_html, height=50)
+            
+            # 화면에 텍스트 노출
+            st.code(raw_text, language="text")
+
+        with tab_pc:
+            st.info("💡 Wide and clean table copy optimized for PC environments.")
+            html_table = df.to_html(index=False).replace('<table border="1" class="dataframe">', '<table border="1" cellpadding="8" style="border-collapse: collapse; text-align: left; font-family: Arial; width: 100%;">')
+            email_html = f"<div id='pc-email-content' style='background:#f8f9fa; padding:15px;'><h3>OAMI Report: {st.session_state.master_info['supplier']}</h3><p>Avg: {oami_avg:.2f}</p>{html_table}</div>"
+            
+            # [UPDATE] 표 서식 복사 버튼 역시 일반 사이즈로 통일했습니다.
+            copy_table_html = f"""
+            <button onclick='copyPCTable()' style='width:100%; height:40px; background-color:#28a745; color:white; border:none; border-radius:5px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
+                📋 Copy Table for Outlook
+            </button>
+            <script>
+            function copyPCTable(){{
+                var body = document.getElementById('pc-email-content');
+                var range = document.createRange();
+                range.selectNode(body);
+                window.getSelection().removeAllRanges();
+                window.getSelection().addRange(range);
+                try{{
+                    document.execCommand('copy');
+                    var btn = document.querySelector('button'); 
+                    btn.innerText='✅ Copied!'; 
+                    btn.style.backgroundColor='#198754'; 
+                    setTimeout(function(){{
+                        btn.innerText='📋 Copy Table for Outlook'; 
+                        btn.style.backgroundColor='#28a745';
+                    }}, 2000);
+                }}catch(e){{
+                    alert('Copy failed.');
+                }}
+                window.getSelection().removeAllRanges();
+            }}
+            </script>
+            """
+            components.html(copy_table_html + email_html, height=450, scrolling=True)
 
         st.write("")
         subject = f"OAMI Evaluation - {st.session_state.master_info['supplier']} OAMI - {oami_avg:.2f}"
