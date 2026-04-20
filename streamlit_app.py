@@ -21,17 +21,24 @@ if 'process_list' not in st.session_state:
 with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=st.session_state.master_info["supplier"] == ""):
     sub_col1, sub_col2 = st.columns(2)
     with sub_col1:
-        supplier = st.text_input("Supplier Name", value=st.session_state.master_info["supplier"])
+        # 라벨에 필수 입력(Required*)임을 명시했습니다.
+        supplier = st.text_input("Supplier Name - Required*", value=st.session_state.master_info["supplier"])
     with sub_col2:
-        evaluator = st.text_input("Evaluator Name", value=st.session_state.master_info["evaluator"])
+        # 라벨에 필수 입력(Required*)임을 명시했습니다.
+        evaluator = st.text_input("Evaluator Name - Required*", value=st.session_state.master_info["evaluator"])
     
-    if st.button("Confirm Information"):
-        st.session_state.master_info["supplier"] = supplier
-        st.session_state.master_info["evaluator"] = evaluator
-        st.success("Evaluator info confirmed.")
+    # [UPDATE] 버튼 텍스트를 직관적인 'Go Evaluation'으로 변경했습니다.
+    if st.button("Go Evaluation"):
+        # 업체명이나 평가자 이름 중 하나라도 비어있으면 다음으로 넘어가지 못하게 막는 로직입니다.
+        if not supplier or not evaluator:
+            st.error("🚨 Please enter both Supplier Name and Evaluator Name.")
+        else:
+            st.session_state.master_info["supplier"] = supplier
+            st.session_state.master_info["evaluator"] = evaluator
+            st.success("Ready for evaluation.")
 
-# 업체 정보가 설정된 경우에만 입력창을 보여줍니다.
-if st.session_state.master_info["supplier"]:
+# 업체 정보가 완전히 설정된 경우에만 하단 평가 입력창(Step 2)을 보여줍니다.
+if st.session_state.master_info["supplier"] and st.session_state.master_info["evaluator"]:
     st.info(f"📍 Supplier: **{st.session_state.master_info['supplier']}** | Evaluator: **{st.session_state.master_info['evaluator']}**")
     
     # 3. 공정별 상세 평가 입력
@@ -97,7 +104,7 @@ if st.session_state.master_info["supplier"]:
         cols = ["Supplier", "Evaluator", "No.", "Process", "Type", "Description", "PAMI", "Remark", "Time"]
         df = df[cols]
         
-        # [UPDATE] 요약 지표 영역에 '전체 공정 수'와 'OAMI 평균'을 나란히 표시합니다.
+        # 요약 지표 영역에 '전체 공정 수'와 'OAMI 평균'을 나란히 표시합니다.
         oami_avg = df["PAMI"].mean()
         total_processes = len(df)
         
@@ -113,7 +120,7 @@ if st.session_state.master_info["supplier"]:
         with tab_text:
             st.info("💡 Best for Mobile. Click the copy icon in the top right of the box.")
             
-            # [UPDATE] 모바일 텍스트 리포트에도 공정 수(Total Processes)를 추가했습니다.
+            # 모바일 텍스트 리포트에도 공정 수(Total Processes)를 추가했습니다.
             text_report = f"===================================================\n"
             text_report += f"              OAMI Evaluation Report\n"
             text_report += f"===================================================\n"
@@ -140,7 +147,7 @@ if st.session_state.master_info["supplier"]:
                 '<table border="1" cellpadding="8" style="border-collapse: collapse; text-align: left; font-family: Arial, sans-serif; width: 100%; background-color: #ffffff;">'
             )
             
-            # [UPDATE] 이메일용 HTML 요약 정보에도 공정 수(Total Processes)를 추가했습니다.
+            # 이메일용 HTML 요약 정보에도 공정 수(Total Processes)를 추가했습니다.
             email_content_html = f"""
             <div id="email-content" style="font-family: Arial, sans-serif; padding: 15px; border: 1px solid #ddd; background-color: #f8f9fa;">
                 <h3 style="color: #333; margin-top:0;">OAMI Report: {st.session_state.master_info['supplier']}</h3>
