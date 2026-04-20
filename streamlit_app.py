@@ -36,7 +36,6 @@ if st.session_state.master_info["supplier"]:
         
         p_name = st.text_input("Process Name (Optional)")
         
-        # [UPDATE] 선택 옵션을 제거하고 심플하게 텍스트를 직접 입력(Key-in)받도록 변경했습니다.
         p_desc = st.text_input("Description - Required*", placeholder="Enter process description...")
 
         p_type = st.selectbox(
@@ -58,7 +57,6 @@ if st.session_state.master_info["supplier"]:
         add_button = st.form_submit_button("Add to List")
         
         if add_button:
-            # 필수값 검증 (공정명 제외)
             if not p_desc or p_type is None or p_score is None:
                 st.error("🚨 Please fill in all required fields (Description, Type, Score).")
             else:
@@ -82,40 +80,58 @@ if st.session_state.master_info["supplier"]:
         df = pd.DataFrame(st.session_state.process_list)
         oami_avg = df["PAMI"].mean()
         st.metric(label="Total OAMI Average", value=f"{oami_avg:.2f} / 5.0")
-        st.dataframe(df, use_container_width=True)
+        
+        # [UPDATE] Outlook에 복사하기 좋도록 HTML 표(Table) 형태로 디자인을 생성합니다.
+        # 판다스 데이터프레임을 HTML 표 코드로 변환하고, Outlook에서 깨지지 않게 테두리(border) 속성을 입힙니다.
+        html_table = df.to_html(index=False)
+        html_table = html_table.replace(
+            '<table border="1" class="dataframe">', 
+            '<table border="1" cellpadding="8" style="border-collapse: collapse; text-align: left; font-family: Arial, sans-serif; width: 100%;">'
+        )
+        
+        # 이메일 상단에 들어갈 요약 정보와 HTML 표를 합칩니다.
+        email_html = f"""
+        <div style="font-family: Arial, sans-serif; padding: 10px; border: 1px solid #ddd; background-color: #f9f9f9;">
+            <h3 style="color: #333;">OAMI Evaluation Report</h3>
+            <p><strong>Supplier:</strong> {st.session_state.master_info['supplier']}</p>
+            <p><strong>Evaluator:</strong> {st.session_state.master_info['evaluator']}</p>
+            <p><strong>Average OAMI:</strong> <span style="color: blue; font-size: 18px; font-weight: bold;">{oami_avg:.2f} / 5.0</span></p>
+            <br>
+            {html_table}
+        </div>
+        """
 
-        # 내보내기 옵션 1: CSV 다운로드 (엑셀 호환)
+        st.subheader("📧 Email Body (Copy & Paste)")
+        st.info("💡 아래 박스 안의 내용을 마우스로 드래그하여 복사(Ctrl+C)한 뒤, 메일 본문에 붙여넣기(Ctrl+V) 하세요.")
+        
+        # 생성된 HTML 표를 화면에 출력합니다.
+        st.markdown(email_html, unsafe_allow_html=True)
+        st.write("") # 간격 띄우기
+
+        # [UPDATE] 메일 본문(body)은 사용자가 직접 표를 붙여넣을 것이므로 비워두고, 제목(subject)만 자동으로 입력된 새 메일 창을 띄웁니다.
+        subject = f"OAMI Evaluation - {st.session_state.master_info['supplier']} OAMI - {oami_avg:.2f}"
+        mail_link = f"mailto:?subject={urllib.parse.quote(subject)}"
+        
+        st.markdown(
+            f'<a href="{mail_link}" target="_blank" style="text-decoration:none;">'
+            f'<button style="width:100%; height:45px; border-radius:5px; border:none; cursor:pointer; background-color:#0078D4; color:white; font-weight:bold; font-size: 16px;">'
+            f'📨 1. Open Outlook (새 메일 창 열기)</button></a>', 
+            unsafe_allow_html=True
+        )
+
+        st.write("---")
+        
+        # CSV 백업은 만약을 위해 유지해둡니다.
         csv_data = df.to_csv(index=False, encoding='utf-8-sig')
         st.download_button(
-            label="📥 Download CSV for Excel",
+            label="📥 2. Download CSV Backup (선택사항)",
             data=csv_data,
             file_name=f"OAMI_{st.session_state.master_info['supplier']}_{datetime.now().strftime('%Y%m%d')}.csv",
             mime="text/csv",
             use_container_width=True
         )
 
-        # 내보내기 옵션 2: 이메일 본문용 텍스트 생성
-        st.subheader("📧 Email Data (For Outlook)")
-        
-        # Outlook 본문에 넣기 좋게 표 형식을 텍스트로 만듭니다.
-        email_body = f"OAMI Evaluation Report\n"
-        email_body += f"Supplier: {st.session_state.master_info['supplier']}\n"
-        email_body += f"Evaluator: {st.session_state.master_info['evaluator']}\n"
-        email_body += f"Average OAMI: {oami_avg:.2f}\n"
-        email_body += "-"*30 + "\n"
-        for i, row in df.iterrows():
-            email_body += f"[{row['Type']}] {row['Process']}: {row['PAMI']}pt - {row['Description']}\n"
-        
-        st.text_area("Copy this text to your Outlook body:", value=email_body, height=200)
-
-        # Outlook 실행 링크 (모바일에서도 작동)
-        subject = f"OAMI Report: {st.session_state.master_info['supplier']}"
-        encoded_body = urllib.parse.quote(email_body)
-        mail_link = f"mailto:?subject={subject}&body={encoded_body}"
-        
-        st.markdown(f'<a href="{mail_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:40px; border-radius:5px; border:none; cursor:pointer;">📧 Open Default Mail App</button></a>', unsafe_allow_name=True)
-
-        if st.button("🚨 Clear All Data (Start New)"):
+        if st.button("🚨 Clear All Data (Start New)", use_container_width=True):
             st.session_state.master_info = {"supplier": "", "evaluator": ""}
             st.session_state.process_list = []
             st.rerun()
