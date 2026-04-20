@@ -2,12 +2,15 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import urllib.parse 
-# [NEW] Streamlit 앱 내부에 사용자 정의 HTML과 JavaScript를 삽입하기 위한 라이브러리입니다.
+# Streamlit 앱 내부에 사용자 정의 HTML과 JavaScript를 삽입하기 위한 라이브러리입니다.
 import streamlit.components.v1 as components
 
-# 페이지 설정: 아이폰 등 모바일 브라우저 최적화
-st.set_page_config(page_title="OAMI/PAMI Evaluation Tool", layout="centered")
-st.title("🏭 OAMI Field Evaluation System")
+# [UPDATE] 페이지 설정: 아이폰 등 모바일 브라우저 최적화
+# page_title을 간결하게 수정하고, page_icon에 평가를 상징하는 클립보드(📋) 이모지를 추가했습니다.
+st.set_page_config(page_title="Supplier OAMI", page_icon="📋", layout="centered")
+
+# [UPDATE] 메인 타이틀 변경: 요청하신 대로 시스템의 이름을 변경하고 아이콘도 분석/평가 느낌의 차트(📊)로 변경했습니다.
+st.title("📊 Supplier OAMI Evaluation System")
 
 # 1. 세션 상태 초기화: 앱을 새로고침하기 전까지 입력한 데이터를 임시 보관합니다.
 if 'master_info' not in st.session_state:
@@ -91,7 +94,7 @@ if st.session_state.master_info["supplier"]:
             '<table border="1" cellpadding="8" style="border-collapse: collapse; text-align: left; font-family: Arial, sans-serif; width: 100%;">'
         )
         
-        # [NEW] 메일 본문에 들어갈 텍스트와 표를 HTML 태그(div)로 한 번 더 감쌉니다.
+        # 메일 본문에 들어갈 텍스트와 표를 HTML 태그(div)로 한 번 더 감쌉니다.
         # id="email-content"를 부여하여 자바스크립트가 이 부분만 정확히 찾아 복사할 수 있게 만듭니다.
         email_content_html = f"""
         <div id="email-content" style="font-family: Arial, sans-serif; padding: 15px; border: 1px solid #ddd; background-color: #ffffff; border-radius: 5px;">
@@ -104,7 +107,7 @@ if st.session_state.master_info["supplier"]:
         </div>
         """
 
-        # [NEW] 'Copy' 버튼과 클립보드 복사 로직을 수행하는 자바스크립트를 결합한 최종 HTML 블록을 생성합니다.
+        # 'Copy' 버튼과 클립보드 복사 로직을 수행하는 자바스크립트를 결합한 최종 HTML 블록을 생성합니다.
         # 웹 브라우저의 document.execCommand('copy') 기능을 사용하여 서식(Rich Text)을 그대로 클립보드에 담습니다.
         custom_html_with_copy_button = f"""
         <div style="margin-bottom: 10px;">
@@ -146,7 +149,7 @@ if st.session_state.master_info["supplier"]:
 
         st.subheader("📧 Email Body (One-Click Copy)")
         
-        # [NEW] components.html을 사용하여 위에서 만든 자바스크립트 내장 HTML을 화면에 렌더링합니다.
+        # components.html을 사용하여 위에서 만든 자바스크립트 내장 HTML을 화면에 렌더링합니다.
         # height를 넉넉하게 주어 표가 잘리지 않도록 하고, 필요시 스크롤되도록 설정합니다.
         components.html(custom_html_with_copy_button, height=450, scrolling=True)
 
