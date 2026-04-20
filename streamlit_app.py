@@ -19,7 +19,7 @@ BACKUP_DIR = "oami_backups"
 if not os.path.exists(BACKUP_DIR):
     os.makedirs(BACKUP_DIR)
 
-# 파일명 생성 함수: "SupplierName_EvaluatorName.json" 형태로 생성하여 다중 사용자 충돌 방지
+# 파일명 생성 함수
 def get_backup_filename(supplier, evaluator):
     safe_sup = "".join(c for c in supplier if c.isalnum() or c in " _-").strip()
     safe_eval = "".join(c for c in evaluator if c.isalnum() or c in " _-").strip()
@@ -209,70 +209,46 @@ if st.session_state.is_evaluating:
         with m_col2:
             st.metric(label="Total OAMI Average", value=f"{oami_avg:.2f} / 5.0")
         
-        tab_mobile, tab_pc = st.tabs(["📱 1. Mobile", "🖥️ 2. PC"])
+        # [UPDATE] 탭을 없애고 직관적인 텍스트 기반 단일 화면으로 통합했습니다.
+        st.info("💡 **Excel Tip:** Click the big button below, paste into Excel, and use `Data > Text to Columns` with the `|` delimiter.")
         
-        with tab_mobile:
-            st.info("💡 **Mobile Instructions:** Convert the table to an image to easily copy or save it to your phone.")
-            
-            # [UPDATE] HTML을 이미지로 변환해주는 외부 라이브러리(html2canvas)를 활용합니다.
-            # 모바일 환경에서 드래그 복사가 힘든 점을 완벽하게 보완합니다.
-            html_table_mobile = df.to_html(index=False).replace(
-                '<table border="1" class="dataframe">', 
-                '<table border="1" cellpadding="6" style="border-collapse: collapse; text-align: left; font-family: Arial; width: 100%; font-size: 13px; line-height: 1.3;">'
-            )
-            
-            # 캡처될 영역을 id="capture-area"로 지정하고 흰색 배경을 줍니다.
-            capture_html = f"""
-            <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-            <div id="capture-area" style="background-color: white; padding: 15px; border-radius: 5px;">
-                <h3 style="margin: 0 0 5px 0; color: #333;">OAMI Report: {st.session_state.master_info['supplier']}</h3>
-                <p style="margin: 0 0 10px 0; font-size: 14px;">Total Processes: <b>{total_processes}</b> | Avg OAMI: <b style="color: blue;">{oami_avg:.2f}</b></p>
-                {html_table_mobile}
-            </div>
-            
-            <button onclick="captureImage()" style="width: 100%; height: 45px; background-color: #0d6efd; color: white; border: none; border-radius: 5px; font-weight: bold; font-size: 16px; margin-top: 15px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                📸 Convert to Image
-            </button>
-            
-            <div id="output-container" style="display: none; margin-top: 15px; text-align: center; border: 2px dashed #ccc; padding: 10px; border-radius: 5px; background-color: #f8f9fa;">
-                <p style="color: #d9534f; font-weight: bold; margin-bottom: 10px;">👇 Long-press the image below to Copy or Save</p>
-                <img id="result-image" style="max-width: 100%; height: auto; border: 1px solid #ddd; box-shadow: 0 4px 8px rgba(0,0,0,0.1);" />
-            </div>
+        # [UPDATE] 띄어쓰기 여백을 모두 없애고 오직 '|' 기호로만 데이터를 구분합니다.
+        raw_text = f"Supplier: {st.session_state.master_info['supplier']} | Evaluator: {st.session_state.master_info['evaluator']} | Avg OAMI: {oami_avg:.2f}\n"
+        raw_text += "No.|Process|Type|PAMI|Description|Remark|Time\n"
+        for _, row in df.iterrows():
+            raw_text += f"{row['No.']}|{row['Process']}|{row['Type']}|{row['PAMI']}|{row['Description']}|{row['Remark']}|{row['Time']}\n"
 
-            <script>
-            function captureImage() {{
-                var element = document.getElementById('capture-area');
-                // 해상도를 높여서 글씨가 깨지지 않게 캡처합니다 (scale: 2)
-                html2canvas(element, {{ scale: 2, backgroundColor: "#ffffff" }}).then(function(canvas) {{
-                    var imgData = canvas.toDataURL('image/png');
-                    document.getElementById('result-image').src = imgData;
-                    document.getElementById('output-container').style.display = 'block';
-                    var btn = document.querySelector('button');
-                    btn.innerText = '✅ Image Created! (See below)';
-                    btn.style.backgroundColor = '#198754';
-                }});
+        # [UPDATE] 매우 크고 터치하기 쉬운 복사 버튼(HTML/JS)
+        # 텍스트 데이터는 숨겨진 textarea에 담아두고 자바스크립트로 복사합니다.
+        copy_html = f"""
+        <textarea id="copyText" style="position: absolute; left: -9999px;">{raw_text}</textarea>
+        <button onclick="copyToClipboard()" style="width: 100%; height: 60px; background-color: #0d6efd; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 20px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            📋 COPY DATA FOR EXCEL
+        </button>
+        <script>
+        function copyToClipboard() {{
+            var copyText = document.getElementById("copyText");
+            copyText.select();
+            copyText.setSelectionRange(0, 99999); /* For mobile devices */
+            try {{
+                document.execCommand("copy");
+                var btn = document.querySelector('button');
+                btn.innerText = '✅ COPIED! (Ready to Paste)';
+                btn.style.backgroundColor = '#198754';
+                setTimeout(function(){{
+                    btn.innerText = '📋 COPY DATA FOR EXCEL';
+                    btn.style.backgroundColor = '#0d6efd';
+                }}, 2000);
+            }} catch (err) {{
+                alert("Copy failed. Please copy the text block manually.");
             }}
-            </script>
-            """
-            
-            components.html(capture_html, height=600, scrolling=True)
-            
-            st.write("---")
-            st.write("**🔽 Fallback: Text Copy**")
-            
-            # 혹시 모를 상황을 대비한 텍스트 복사 (예비책)
-            text_report = f"OAMI Report: {st.session_state.master_info['supplier']}\nAvg: {oami_avg:.2f}\n"
-            text_report += "No | Process | Type | PAMI | Description | Remark | Time\n"
-            for _, row in df.iterrows():
-                text_report += f"{row['No.']} | {row['Process']} | {row['Type']} | {row['PAMI']}pt | {row['Description']} | {row['Remark']} | {row['Time']}\n"
-            st.code(text_report, language="text")
-
-        with tab_pc:
-            st.info("💡 Wide and clean table copy optimized for PC environments.")
-            html_table = df.to_html(index=False).replace('<table border="1" class="dataframe">', '<table border="1" cellpadding="8" style="border-collapse: collapse; text-align: left; font-family: Arial; width: 100%;">')
-            email_html = f"<div id='pc-email-content' style='background:#f8f9fa; padding:15px;'><h3>OAMI Report: {st.session_state.master_info['supplier']}</h3><p>Avg: {oami_avg:.2f}</p>{html_table}</div>"
-            copy_html = f"<button onclick='copyPCTable()' style='width:100%;height:40px;background:#28a745;color:white;border:none;border-radius:5px;cursor:pointer;font-weight:bold;margin-bottom:10px;'>📋 Copy Table for Outlook</button><script>function copyPCTable(){{var body=document.getElementById('pc-email-content');var range=document.createRange();range.selectNode(body);window.getSelection().removeAllRanges();window.getSelection().addRange(range);try{{document.execCommand('copy');alert('Table Copied!');}}catch(e){{alert('Copy failed.');}}window.getSelection().removeAllRanges();}}</script>"
-            components.html(copy_html + email_html, height=450, scrolling=True)
+        }}
+        </script>
+        """
+        components.html(copy_html, height=80)
+        
+        # 복사될 텍스트의 내용을 사용자가 확인할 수 있도록 화면에 노출합니다.
+        st.code(raw_text, language="text")
 
         st.write("")
         subject = f"OAMI Evaluation - {st.session_state.master_info['supplier']} OAMI - {oami_avg:.2f}"
