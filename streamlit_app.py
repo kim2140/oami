@@ -5,10 +5,10 @@ import urllib.parse
 # Streamlit 앱 내부에 사용자 정의 HTML과 JavaScript를 삽입하기 위한 라이브러리입니다.
 import streamlit.components.v1 as components
 
-# [UPDATE] 페이지 설정: 아이콘(📋)과 탭 제목을 영문으로 설정
+# 페이지 설정: 아이콘(📋)과 탭 제목을 영문으로 설정
 st.set_page_config(page_title="Supplier OAMI", page_icon="📋", layout="centered")
 
-# [UPDATE] 메인 타이틀 영문화
+# 메인 타이틀 영문화
 st.title("📊 Supplier OAMI Evaluation System")
 
 # 1. 세션 상태 초기화: 앱을 새로고침하기 전까지 입력한 데이터를 임시 보관합니다.
@@ -34,14 +34,14 @@ with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=st.session_s
 if st.session_state.master_info["supplier"]:
     st.info(f"📍 Supplier: **{st.session_state.master_info['supplier']}** | Evaluator: **{st.session_state.master_info['evaluator']}**")
     
-    # 3. 공정별 상세 평가 입력 (라디오 버튼 및 리마크 추가)
+    # 3. 공정별 상세 평가 입력
     with st.form("pami_input_form", clear_on_submit=True):
         st.subheader("📝 Step 2: PAMI Input per Process")
         
         p_name = st.text_input("Process Name (Optional)")
         p_desc = st.text_input("Description - Required*", placeholder="Enter details...")
 
-        # [UPDATE] Process Type 라디오 버튼 (MH, P, WIP)
+        # Process Type 라디오 버튼 (MH, P, WIP)
         st.write("Process Type - Required*")
         p_type = st.radio(
             "Process Type Select", 
@@ -60,7 +60,7 @@ if st.session_state.master_info["supplier"]:
             label_visibility="collapsed" 
         )
         
-        # [UPDATE] Remark 필드 추가
+        # Remark 필드 추가
         p_remark = st.text_input("Remark (Optional)", placeholder="Add any specific notes...")
         
         add_button = st.form_submit_button("Add to List")
@@ -69,7 +69,7 @@ if st.session_state.master_info["supplier"]:
             if not p_desc or p_type is None or p_score is None:
                 st.error("🚨 Required fields: Description, Process Type, PAMI Score.")
             else:
-                # [UPDATE] 자동 번호 매김 (No.)
+                # 자동 번호 매김 (No.)
                 current_no = len(st.session_state.process_list) + 1
                 
                 new_process = {
@@ -92,19 +92,21 @@ if st.session_state.master_info["supplier"]:
         st.subheader("📊 Evaluation Summary")
         
         df = pd.DataFrame(st.session_state.process_list)
-        cols = ["No.", "Supplier", "Evaluator", "Process", "Description", "Type", "PAMI", "Time", "Remark"]
+        
+        # [UPDATE] No. 컬럼이 Process 바로 앞에 위치하도록 전체 컬럼 순서를 재배치했습니다.
+        cols = ["Supplier", "Evaluator", "No.", "Process", "Type", "Description", "PAMI", "Remark", "Time"]
         df = df[cols]
         
         oami_avg = df["PAMI"].mean()
         st.metric(label="Total OAMI Average", value=f"{oami_avg:.2f} / 5.0")
         
-        # [UPDATE] 탭 이름 및 설명 영문화
+        # 탭 이름 및 설명 영문화
         tab_text, tab_table = st.tabs(["📱 1. Mobile (Text Copy)", "🖥️ 2. PC (Table Copy)"])
         
         with tab_text:
             st.info("💡 Best for Mobile. Click the copy icon in the top right of the box.")
             
-            # [UPDATE] 모바일용 파이프 구분 텍스트 표 영문화
+            # [UPDATE] 모바일 텍스트 표에서도 No. 바로 뒤에 Process가 오도록 순서를 수정했습니다.
             text_report = f"===================================================\n"
             text_report += f"              OAMI Evaluation Report\n"
             text_report += f"===================================================\n"
@@ -112,11 +114,12 @@ if st.session_state.master_info["supplier"]:
             text_report += f"▶ Evaluator: {st.session_state.master_info['evaluator']}\n"
             text_report += f"▶ Avg OAMI : {oami_avg:.2f} / 5.0\n"
             text_report += f"---------------------------------------------------\n"
-            text_report += f"No. | Type | Process | PAMI | Description | Remark\n"
+            text_report += f"No. | Process | Type | PAMI | Description | Remark | Time\n"
             text_report += f"---------------------------------------------------\n"
             
             for i, row in df.iterrows():
-                text_report += f"{row['No.']:<3} | {row['Type']:<4} | {row['Process']} | {row['PAMI']}pt | {row['Description']} | {row['Remark']}\n"
+                # [UPDATE] 데이터 출력 순서 변경 (No. -> Process -> Type -> PAMI ...)
+                text_report += f"{row['No.']:<3} | {row['Process']} | {row['Type']:<4} | {row['PAMI']}pt | {row['Description']} | {row['Remark']} | {row['Time']}\n"
             
             text_report += f"==================================================="
             st.code(text_report, language="text")
@@ -138,7 +141,7 @@ if st.session_state.master_info["supplier"]:
             </div>
             """
             
-            # [UPDATE] 버튼 및 자바스크립트 메시지 영문화
+            # 버튼 및 자바스크립트 메시지 영문화
             custom_html_with_copy_button = f"""
             <div style="margin-bottom: 10px;">
                 <button onclick="copyRichText()" style="width:100%; height:40px; background-color:#28a745; color:white; border:none; border-radius:5px; font-size:16px; font-weight:bold; cursor:pointer;">
@@ -173,7 +176,7 @@ if st.session_state.master_info["supplier"]:
 
         st.write("") 
         
-        # [UPDATE] 아웃룩 버튼 영문화
+        # 아웃룩 버튼 영문화
         subject = f"OAMI Evaluation - {st.session_state.master_info['supplier']} OAMI - {oami_avg:.2f}"
         mail_link = f"mailto:?subject={urllib.parse.quote(subject)}"
         
