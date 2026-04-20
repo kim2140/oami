@@ -4,8 +4,8 @@ from datetime import datetime
 import urllib.parse
 import json
 import os
-import glob # [NEW] 여러 개의 백업 파일을 찾기 위해 추가
-import time # [NEW] 파일 생성 시간을 확인하여 3일이 지난 파일을 지우기 위해 추가
+import glob 
+import time 
 
 # 페이지 설정: 브라우저 탭 아이콘 및 제목 설정
 st.set_page_config(page_title="Supplier OAMI", page_icon="📝", layout="centered")
@@ -13,19 +13,19 @@ st.set_page_config(page_title="Supplier OAMI", page_icon="📝", layout="centere
 # 메인 타이틀
 st.title("📝 Supplier OAMI Evaluation App")
 
-# [NEW] 백업 데이터를 저장할 전용 폴더를 생성합니다.
+# 백업 데이터를 저장할 전용 폴더를 생성합니다.
 BACKUP_DIR = "oami_backups"
 if not os.path.exists(BACKUP_DIR):
     os.makedirs(BACKUP_DIR)
 
-# [NEW] 파일명 생성 함수: 업체명_평가자명.json 형태로 만듭니다. (동일 업체/평가자면 Overwrite 됨)
+# 파일명 생성 함수: 업체명_평가자명.json 형태로 만듭니다. (동일 업체/평가자면 Overwrite 됨)
 def get_backup_filename(supplier, evaluator):
     # 특수문자로 인한 파일 생성 오류를 막기 위해 안전한 문자로만 파일명을 만듭니다.
     safe_sup = "".join(c for c in supplier if c.isalnum() or c in " _-").strip()
     safe_eval = "".join(c for c in evaluator if c.isalnum() or c in " _-").strip()
     return os.path.join(BACKUP_DIR, f"{safe_sup}_{safe_eval}.json")
 
-# [NEW] 오래된 백업 파일 정리 함수: 3일(3 * 24시간)이 지난 파일은 자동으로 삭제합니다.
+# 오래된 백업 파일 정리 함수: 3일(3 * 24시간)이 지난 파일은 자동으로 삭제합니다.
 def cleanup_old_backups():
     now = time.time()
     for f in glob.glob(os.path.join(BACKUP_DIR, "*.json")):
@@ -36,7 +36,7 @@ def cleanup_old_backups():
             except:
                 pass
 
-# [UPDATE] 실시간 자동 백업 함수 (업체명_평가자명 파일로 저장)
+# 실시간 자동 백업 함수 (업체명_평가자명 파일로 저장)
 def save_temp_backup():
     # 사용자가 엑셀로 다운받아서 백업이 중단된 상태라면 저장하지 않습니다.
     if st.session_state.get("stop_backup", False):
@@ -55,7 +55,7 @@ def save_temp_backup():
     with open(fname, "w", encoding="utf-8") as f:
         json.dump(backup_data, f, ensure_ascii=False, indent=4)
 
-# [NEW] 엑셀 다운로드 시 실행될 콜백 함수: 백업을 중단하고 기존 파일을 즉시 삭제합니다.
+# 엑셀 다운로드 시 실행될 콜백 함수: 백업을 중단하고 기존 파일을 즉시 삭제합니다.
 def handle_download():
     st.session_state.stop_backup = True
     supplier = st.session_state.master_info.get("supplier", "")
@@ -76,17 +76,20 @@ if 'master_info' not in st.session_state:
     st.session_state.master_info = {"supplier": "", "evaluator": ""}
 if 'process_list' not in st.session_state:
     st.session_state.process_list = []
-# [NEW] 평가가 시작되었는지 확인하는 상태값 (이 값이 True면 입력창이 잠깁니다)
+# 평가가 시작되었는지 확인하는 상태값 (이 값이 True면 입력창이 잠깁니다)
 if 'is_evaluating' not in st.session_state:
     st.session_state.is_evaluating = False
-# [NEW] 엑셀 다운로드 이후 백업을 중지하는 상태값
+# 엑셀 다운로드 이후 백업을 중지하는 상태값
 if 'stop_backup' not in st.session_state:
     st.session_state.stop_backup = False
+# [UPDATE] 초기화 버튼 클릭 확인을 위한 상태값 추가
+if 'show_confirm_clear' not in st.session_state:
+    st.session_state.show_confirm_clear = False
 
 # 2. Step 1: 업체 및 평가자 정보
 with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=not st.session_state.is_evaluating):
     
-    # [NEW] 과거 최대 3일치의 백업 데이터 목록을 불러와서 선택할 수 있게 합니다.
+    # 과거 최대 3일치의 백업 데이터 목록을 불러와서 선택할 수 있게 합니다.
     backup_files = glob.glob(os.path.join(BACKUP_DIR, "*.json"))
     if backup_files and not st.session_state.is_evaluating:
         st.subheader("Check Backup History (Past 3 Days)")
@@ -114,10 +117,10 @@ with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=not st.sessi
     
     sub_col1, sub_col2 = st.columns(2)
     with sub_col1:
-        # [UPDATE] is_evaluating 상태가 True이면 입력창이 disabled(비활성화) 되어 수정할 수 없습니다.
+        # is_evaluating 상태가 True이면 입력창이 disabled(비활성화) 되어 수정할 수 없습니다.
         supplier_input = st.text_input("Supplier Name - Required*", value=st.session_state.master_info["supplier"], disabled=st.session_state.is_evaluating)
     with sub_col2:
-        # [UPDATE] is_evaluating 상태가 True이면 입력창이 disabled(비활성화) 되어 수정할 수 없습니다.
+        # is_evaluating 상태가 True이면 입력창이 disabled(비활성화) 되어 수정할 수 없습니다.
         evaluator_input = st.text_input("Evaluator Name - Required*", value=st.session_state.master_info["evaluator"], disabled=st.session_state.is_evaluating)
     
     # 평가가 아직 시작되지 않았을 때만 'Go Evaluation' 버튼을 보여줍니다.
@@ -128,12 +131,12 @@ with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=not st.sessi
             else:
                 st.session_state.master_info["supplier"] = supplier_input
                 st.session_state.master_info["evaluator"] = evaluator_input
-                # [NEW] 필수값이 입력되면 상태를 변경하여 위 텍스트 창들을 잠그고 하단 창을 엽니다.
+                # 필수값이 입력되면 상태를 변경하여 위 텍스트 창들을 잠그고 하단 창을 엽니다.
                 st.session_state.is_evaluating = True
                 save_temp_backup()
                 st.rerun()
 
-# [UPDATE] 업체 정보가 설정되고 평가 상태(is_evaluating)가 활성화된 경우에만 2단계 활성화
+# 업체 정보가 설정되고 평가 상태(is_evaluating)가 활성화된 경우에만 2단계 활성화
 if st.session_state.is_evaluating:
     st.info(f"📍 Supplier: **{st.session_state.master_info['supplier']}** | Evaluator: **{st.session_state.master_info['evaluator']}**")
     
@@ -233,7 +236,7 @@ if st.session_state.is_evaluating:
         st.write("---")
         csv_data = df.to_csv(index=False, encoding='utf-8-sig')
         
-        # [NEW] 엑셀 다운로드 버튼: on_click 파라미터를 사용해 다운로드 즉시 백업 중지 및 파일 삭제를 수행합니다.
+        # 엑셀 다운로드 버튼: on_click 파라미터를 사용해 다운로드 즉시 백업 중지 및 파일 삭제를 수행합니다.
         st.download_button(
             label="📥 Download CSV Backup", 
             data=csv_data, 
@@ -243,21 +246,34 @@ if st.session_state.is_evaluating:
             on_click=handle_download
         )
 
-        # 데이터 리셋
-        if st.button("🚨 Clear All Data (Start New)", use_container_width=True):
-            # 클리어 할 때도 현재 작업 중인 백업 파일 삭제
-            supplier = st.session_state.master_info.get("supplier", "")
-            evaluator = st.session_state.master_info.get("evaluator", "")
-            if supplier and evaluator:
-                fname = get_backup_filename(supplier, evaluator)
-                if os.path.exists(fname):
-                    try:
-                        os.remove(fname)
-                    except:
-                        pass
-            
-            st.session_state.master_info = {"supplier": "", "evaluator": ""}
-            st.session_state.process_list = []
-            st.session_state.is_evaluating = False # 잠금 해제
-            st.session_state.stop_backup = False
-            st.rerun()
+        # [UPDATE] 데이터 초기화 버튼에 Yes/No 확인 로직을 추가했습니다.
+        if not st.session_state.show_confirm_clear:
+            if st.button("🚨 Clear All Data (Start New)", use_container_width=True):
+                st.session_state.show_confirm_clear = True
+                st.rerun()
+        else:
+            st.warning("⚠️ Are you sure you want to clear all data? This cannot be undone.")
+            col_yes, col_no = st.columns(2)
+            with col_yes:
+                if st.button("✔️ Yes, Clear Data", use_container_width=True):
+                    # 클리어 할 때도 현재 작업 중인 백업 파일 삭제
+                    supplier = st.session_state.master_info.get("supplier", "")
+                    evaluator = st.session_state.master_info.get("evaluator", "")
+                    if supplier and evaluator:
+                        fname = get_backup_filename(supplier, evaluator)
+                        if os.path.exists(fname):
+                            try:
+                                os.remove(fname)
+                            except:
+                                pass
+                    
+                    st.session_state.master_info = {"supplier": "", "evaluator": ""}
+                    st.session_state.process_list = []
+                    st.session_state.is_evaluating = False # 잠금 해제
+                    st.session_state.stop_backup = False
+                    st.session_state.show_confirm_clear = False # 상태 초기화
+                    st.rerun()
+            with col_no:
+                if st.button("❌ No, Cancel", use_container_width=True):
+                    st.session_state.show_confirm_clear = False # 확인창 닫기
+                    st.rerun()
