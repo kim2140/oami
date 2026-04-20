@@ -54,17 +54,23 @@ def save_temp_backup():
 
 # 엑셀 다운로드 클릭 시 실행될 콜백 함수
 def handle_download():
-    st.session_state.stop_backup = True
-    supplier = st.session_state.master_info.get("supplier", "")
-    evaluator = st.session_state.master_info.get("evaluator", "")
-    if supplier and evaluator:
-        fname = get_backup_filename(supplier, evaluator)
-        if os.path.exists(fname):
-            try:
-                os.remove(fname)
-            except:
-                pass
-    st.session_state.download_completed = True
+    # 사용자가 체크박스를 선택하여 삭제를 원할 때만 파일 삭제 로직을 수행합니다.
+    if st.session_state.get("delete_backup_checkbox", True):
+        st.session_state.stop_backup = True
+        supplier = st.session_state.master_info.get("supplier", "")
+        evaluator = st.session_state.master_info.get("evaluator", "")
+        if supplier and evaluator:
+            fname = get_backup_filename(supplier, evaluator)
+            if os.path.exists(fname):
+                try:
+                    os.remove(fname)
+                except:
+                    pass
+        st.session_state.download_action_status = "deleted"
+    else:
+        # 삭제하지 않는 옵션 선택 시, 백업을 유지합니다.
+        st.session_state.stop_backup = False
+        st.session_state.download_action_status = "kept"
 
 # 폼 제출 프로세스 (조건부 초기화)
 def process_form_submit():
@@ -113,8 +119,11 @@ if 'is_evaluating' not in st.session_state:
     st.session_state.is_evaluating = False
 if 'stop_backup' not in st.session_state:
     st.session_state.stop_backup = False
-if 'download_completed' not in st.session_state:
-    st.session_state.download_completed = False
+
+# [UPDATE] 오류의 원인이었던 초기화 변수명을 정확하게 'download_action_status'로 수정했습니다.
+if 'download_action_status' not in st.session_state:
+    st.session_state.download_action_status = None
+
 if 'show_confirm_clear' not in st.session_state:
     st.session_state.show_confirm_clear = False
 if 'pami_form_error' not in st.session_state:
@@ -149,7 +158,8 @@ with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=not st.sessi
                     st.session_state.process_list = backup_options[selected_backup]['list']
                     st.session_state.is_evaluating = True
                     st.session_state.stop_backup = False
-                    st.session_state.download_completed = False
+                    # [UPDATE] 복구 시에도 상태 변수를 올바르게 초기화합니다.
+                    st.session_state.download_action_status = None 
                     st.rerun()
         st.write("---")
     
@@ -219,7 +229,7 @@ if st.session_state.is_evaluating:
             for _, row in df.iterrows():
                 raw_text += f"{row['No.']}|{row['Process']}|{row['Type']}|{row['PAMI']}|{row['Description']}|{row['Remark']}|{row['Time']}\n"
 
-            # [UPDATE] 텍스트를 JS로 안전하게 전달하기 위해 JSON 변환을 사용하고, 모바일 클립보드 호환성을 대폭 높인 스크립트 적용
+            # 텍스트를 JS로 안전하게 전달하기 위해 JSON 변환을 사용
             safe_raw_text = json.dumps(raw_text)
             
             copy_text_html = f"""
@@ -280,7 +290,6 @@ if st.session_state.is_evaluating:
             """
             components.html(copy_text_html, height=50)
             
-            # 파란 버튼이 작동 안할 때를 대비해 Streamlit 기본 제공 복사 버튼(우측 상단)을 활용할 수 있도록 노출
             st.code(raw_text, language="text")
 
         with tab_pc:
@@ -364,6 +373,7 @@ if st.session_state.is_evaluating:
                     st.session_state.process_list = []
                     st.session_state.is_evaluating = False 
                     st.session_state.stop_backup = False
+                    # [UPDATE] 데이터 지울 때도 상태 변수를 올바르게 초기화합니다.
                     st.session_state.download_action_status = None 
                     st.session_state.show_confirm_clear = False 
                     
