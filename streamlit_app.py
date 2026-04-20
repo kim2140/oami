@@ -1,8 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from io import StringIO
-import urllib.parse # 이메일 링크 생성을 위한 라이브러리
+import urllib.parse 
 
 # 페이지 설정: 아이폰 등 모바일 브라우저 최적화
 st.set_page_config(page_title="OAMI/PAMI Evaluation Tool", layout="centered")
@@ -35,35 +34,11 @@ if st.session_state.master_info["supplier"]:
     with st.form("pami_input_form", clear_on_submit=True):
         st.subheader("📝 Step 2: PAMI Input per Process")
         
-        # [UPDATE] 공정명은 선택사항, 나머지는 필수
         p_name = st.text_input("Process Name (Optional)")
         
-        # [UPDATE] Description 가안(Template) 제공 및 배치 수정
-        desc_templates = [
-            "Manual material handling (MH)",
-            "AMR (Autonomous Mobile Robot) transport",
-            "AFT (Autonomous Forklift Truck) pallet routing",
-            "Automated assembly process",
-            "Manual visual inspection",
-            "WIP buffering / Auto-storage",
-            "Direct Input (Type manually)..."
-        ]
-        
-        selected_desc = st.selectbox(
-            "Description - Required*", 
-            options=desc_templates,
-            index=None,
-            placeholder="Select a template..."
-        )
-        
-        # 'Direct Input' 선택 시에만 텍스트 입력창 표시
-        p_desc = ""
-        if selected_desc == "Direct Input (Type manually)...":
-            p_desc = st.text_input("Custom Description - Required*")
-        else:
-            p_desc = selected_desc
+        # [UPDATE] 선택 옵션을 제거하고 심플하게 텍스트를 직접 입력(Key-in)받도록 변경했습니다.
+        p_desc = st.text_input("Description - Required*", placeholder="Enter process description...")
 
-        # [UPDATE] Process Type 구분 (MH, Process, WIP)
         p_type = st.selectbox(
             "Process Type - Required*", 
             ["MH (Material Handling)", "Process", "WIP (Work in Process)"],
@@ -71,7 +46,6 @@ if st.session_state.master_info["supplier"]:
             placeholder="Select Type..."
         )
         
-        # [UPDATE] PAMI 점수 Radio Button (1~5, 기본값 없음)
         st.write("PAMI Score (1: Manual ~ 5: Fully Automated) - Required*")
         p_score = st.radio(
             "PAMI Score Select", 
@@ -110,7 +84,7 @@ if st.session_state.master_info["supplier"]:
         st.metric(label="Total OAMI Average", value=f"{oami_avg:.2f} / 5.0")
         st.dataframe(df, use_container_width=True)
 
-        # [NEW] 내보내기 옵션 1: CSV 다운로드 (엑셀 호환)
+        # 내보내기 옵션 1: CSV 다운로드 (엑셀 호환)
         csv_data = df.to_csv(index=False, encoding='utf-8-sig')
         st.download_button(
             label="📥 Download CSV for Excel",
@@ -120,7 +94,7 @@ if st.session_state.master_info["supplier"]:
             use_container_width=True
         )
 
-        # [NEW] 내보내기 옵션 2: 이메일 본문용 텍스트 생성
+        # 내보내기 옵션 2: 이메일 본문용 텍스트 생성
         st.subheader("📧 Email Data (For Outlook)")
         
         # Outlook 본문에 넣기 좋게 표 형식을 텍스트로 만듭니다.
