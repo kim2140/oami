@@ -212,17 +212,19 @@ if st.session_state.is_evaluating:
         tab_mobile, tab_pc = st.tabs(["📱 1. Mobile (Text)", "🖥️ 2. PC (Table)"])
         
         with tab_mobile:
-            st.info("💡 **Excel Tip:** Click the copy button below, paste into Excel, and use `Data > Text to Columns` with the `|` delimiter.")
+            # [UPDATE] 안내 문구를 Outlook 전용으로 수정했습니다.
+            st.info("💡 **Tip:** Click the copy button below and paste it into your Outlook Mail App.")
             
             raw_text = f"Supplier: {st.session_state.master_info['supplier']} | Evaluator: {st.session_state.master_info['evaluator']} | Processes: {total_processes} | Avg OAMI: {oami_avg:.2f}\n"
             raw_text += "No.|Process|Type|PAMI|Description|Remark|Time\n"
             for _, row in df.iterrows():
                 raw_text += f"{row['No.']}|{row['Process']}|{row['Type']}|{row['PAMI']}|{row['Description']}|{row['Remark']}|{row['Time']}\n"
 
+            # [UPDATE] 버튼 텍스트와 JS 로직 내 텍스트를 "Copy Text for Outlook"으로 변경했습니다.
             copy_text_html = f"""
             <textarea id="copyText" style="position: absolute; left: -9999px;">{raw_text}</textarea>
             <button onclick="copyToClipboard()" style="width: 100%; height: 40px; background-color: #0d6efd; color: white; border: none; border-radius: 5px; font-weight: bold; font-size: 16px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                📋 Copy Text for Excel
+                📋 Copy Text for Outlook
             </button>
             <script>
             function copyToClipboard() {{
@@ -235,7 +237,7 @@ if st.session_state.is_evaluating:
                     btn.innerText = '✅ Copied!';
                     btn.style.backgroundColor = '#198754';
                     setTimeout(function(){{
-                        btn.innerText = '📋 Copy Text for Excel';
+                        btn.innerText = '📋 Copy Text for Outlook';
                         btn.style.backgroundColor = '#0d6efd';
                     }}, 2000);
                 }} catch (err) {{
@@ -284,9 +286,10 @@ if st.session_state.is_evaluating:
 
         st.write("")
         
-        # [UPDATE] 메일 앱 대신 엑셀 앱을 실행하도록 링크(ms-excel:)와 버튼 색상/이름을 변경했습니다.
-        excel_link = "ms-excel:"
-        st.markdown(f'<a href="{excel_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:45px; border-radius:5px; border:none; cursor:pointer; background-color:#107C41; color:white; font-weight:bold; font-size:16px;">📊 Open Excel App</button></a>', unsafe_allow_html=True)
+        # [UPDATE] 하단 앱 실행 버튼을 다시 'Open Outlook Mail App'으로 복구했습니다. (Outlook 블루 색상 적용)
+        subject = f"OAMI Evaluation - {st.session_state.master_info['supplier']} OAMI - {oami_avg:.2f}"
+        mail_link = f"mailto:?subject={urllib.parse.quote(subject)}"
+        st.markdown(f'<a href="{mail_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:45px; border-radius:5px; border:none; cursor:pointer; background-color:#0078D4; color:white; font-weight:bold; font-size:16px;">📨 Open Outlook Mail App</button></a>', unsafe_allow_html=True)
 
         st.write("---")
         
