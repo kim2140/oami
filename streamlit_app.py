@@ -19,7 +19,7 @@ BACKUP_DIR = "oami_backups"
 if not os.path.exists(BACKUP_DIR):
     os.makedirs(BACKUP_DIR)
 
-# 파일명 생성 함수: "업체명_평가자명.json"
+# 파일명 생성 함수: "SupplierName_EvaluatorName.json" 형태로 생성하여 다중 사용자 충돌 방지
 def get_backup_filename(supplier, evaluator):
     safe_sup = "".join(c for c in supplier if c.isalnum() or c in " _-").strip()
     safe_eval = "".join(c for c in evaluator if c.isalnum() or c in " _-").strip()
@@ -37,10 +37,8 @@ def cleanup_old_backups():
 
 # 실시간 자동 백업 함수
 def save_temp_backup():
-    # 엑셀 다운로드 이후에는 더 이상 백업을 생성하지 않습니다.
     if st.session_state.get("stop_backup", False):
         return
-    
     supplier = st.session_state.master_info.get("supplier", "")
     evaluator = st.session_state.master_info.get("evaluator", "")
     if not supplier or not evaluator: return
@@ -54,8 +52,7 @@ def save_temp_backup():
     with open(fname, "w", encoding="utf-8") as f:
         json.dump(backup_data, f, ensure_ascii=False, indent=4)
 
-# [UPDATE] 엑셀 다운로드 클릭 시 실행될 콜백 함수
-# 백업 파일을 삭제하고, 안내 메시지를 띄우기 위한 상태값을 업데이트합니다.
+# 엑셀 다운로드 클릭 시 실행될 콜백 함수
 def handle_download():
     st.session_state.stop_backup = True
     supplier = st.session_state.master_info.get("supplier", "")
@@ -97,14 +94,14 @@ def process_form_submit():
         save_temp_backup()
         st.session_state.success_toast = f"Added No.{current_no}"
         
-        # 필드 초기화
+        # 입력 필드 초기화
         st.session_state.p_name_input = ""
         st.session_state.p_desc_input = ""
         st.session_state.p_type_input = None
         st.session_state.p_score_input = None
         st.session_state.p_remark_input = ""
 
-# 앱 구동 시 3일 지난 파일 청소
+# 앱 구동 시 3일 지난 백업 파일 청소
 cleanup_old_backups()
 
 # 1. 세션 상태 초기화
@@ -125,6 +122,7 @@ if 'pami_form_error' not in st.session_state:
 if 'success_toast' not in st.session_state:
     st.session_state.success_toast = ""
 
+# 토스트 메시지 출력
 if st.session_state.success_toast:
     st.toast(st.session_state.success_toast)
     st.session_state.success_toast = ""
@@ -176,6 +174,9 @@ with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=not st.sessi
 if st.session_state.is_evaluating:
     st.info(f"📍 Supplier: **{st.session_state.master_info['supplier']}** | Evaluator: **{st.session_state.master_info['evaluator']}**")
     
+    if st.session_state.stop_backup:
+        st.warning("⚠️ CSV downloaded. Automatic backup is now disabled for this session.")
+        
     with st.form("pami_input_form", clear_on_submit=False):
         st.subheader("📝 Step 2: PAMI Input per Process")
         if st.session_state.pami_form_error:
@@ -208,30 +209,43 @@ if st.session_state.is_evaluating:
         with m_col2:
             st.metric(label="Total OAMI Average", value=f"{oami_avg:.2f} / 5.0")
         
-        tab_text, tab_table = st.tabs(["📱 1. Mobile (Text)", "🖥️ 2. PC (Table)"])
+        tab_mobile, tab_pc = st.tabs(["📱 1. Mobile", "🖥️ 2. PC"])
         
-        with tab_text:
-            st.info("💡 Best for Mobile. Click the copy icon.")
+        with tab_mobile:
+            # [UPDATE] 모바일 안내 문구 영문으로 변경
+            st.info("💡 Optimized for mobile devices (iPhone/Galaxy). If table formatting breaks, use Text Copy below.")
+            
+            # [UPDATE] 버튼 텍스트 영문으로 변경
+            html_table_mobile = df.to_html(index=False).replace('<table border="1" class="dataframe">', '<table border="1" cellpadding="4" style="border-collapse: collapse; text-align: left; font-family: Arial; width: 100%; font-size: 12px; line-height: 1.2;">')
+            email_html_mobile = f"<div id='mobile-email-content' style='background:#ffffff; padding:5px;'><h4 style='margin:0 0 5px 0;'>OAMI: {st.session_state.master_info['supplier']}</h4><p style='font-size:12px; margin:0 0 5px 0;'>Avg: <b>{oami_avg:.2f}</b></p>{html_table_mobile}</div>"
+            copy_html_mobile = f"<button onclick='copyMobileTable()' style='width:100%;height:40px;background:#0d6efd;color:white;border:none;border-radius:5px;cursor:pointer;font-weight:bold;margin-bottom:10px;'>📋 Copy as Table</button><script>function copyMobileTable(){{var body=document.getElementById('mobile-email-content');var range=document.createRange();range.selectNode(body);window.getSelection().removeAllRanges();window.getSelection().addRange(range);try{{document.execCommand('copy');alert('Table Copied! (Open Mail App)');}}catch(e){{alert('Copy failed. Try Text Copy below.');}}window.getSelection().removeAllRanges();}}</script>"
+            components.html(copy_html_mobile + email_html_mobile, height=300, scrolling=True)
+            
+            st.write("---")
+            # [UPDATE] 텍스트 복사 안내 영문으로 변경
+            st.write("**🔽 Fallback: Copy as Text**")
+            
             text_report = f"OAMI Report: {st.session_state.master_info['supplier']}\nAvg: {oami_avg:.2f}\n"
             text_report += "No | Process | Type | PAMI | Description | Remark | Time\n"
             for _, row in df.iterrows():
                 text_report += f"{row['No.']} | {row['Process']} | {row['Type']} | {row['PAMI']}pt | {row['Description']} | {row['Remark']} | {row['Time']}\n"
             st.code(text_report, language="text")
 
-        with tab_table:
+        with tab_pc:
+            # [UPDATE] PC 안내 문구 영문으로 변경
+            st.info("💡 Wide and clean table copy optimized for PC environments.")
             html_table = df.to_html(index=False).replace('<table border="1" class="dataframe">', '<table border="1" cellpadding="8" style="border-collapse: collapse; text-align: left; font-family: Arial; width: 100%;">')
-            email_html = f"<div id='email-content' style='background:#f8f9fa; padding:15px;'><h3>OAMI Report: {st.session_state.master_info['supplier']}</h3><p>Avg: {oami_avg:.2f}</p>{html_table}</div>"
-            copy_html = f"<button onclick='copyTable()' style='width:100%;height:40px;background:#28a745;color:white;border:none;border-radius:5px;cursor:pointer;font-weight:bold;'>📋 Copy Table for Outlook</button><script>function copyTable(){{var body=document.getElementById('email-content');var range=document.createRange();range.selectNode(body);window.getSelection().removeAllRanges();window.getSelection().addRange(range);document.execCommand('copy');alert('Table Copied!');}}</script>"
+            email_html = f"<div id='pc-email-content' style='background:#f8f9fa; padding:15px;'><h3>OAMI Report: {st.session_state.master_info['supplier']}</h3><p>Avg: {oami_avg:.2f}</p>{html_table}</div>"
+            copy_html = f"<button onclick='copyPCTable()' style='width:100%;height:40px;background:#28a745;color:white;border:none;border-radius:5px;cursor:pointer;font-weight:bold;margin-bottom:10px;'>📋 Copy Table for Outlook</button><script>function copyPCTable(){{var body=document.getElementById('pc-email-content');var range=document.createRange();range.selectNode(body);window.getSelection().removeAllRanges();window.getSelection().addRange(range);try{{document.execCommand('copy');alert('Table Copied!');}}catch(e){{alert('Copy failed.');}}window.getSelection().removeAllRanges();}}</script>"
             components.html(copy_html + email_html, height=450, scrolling=True)
 
         st.write("")
         subject = f"OAMI Evaluation - {st.session_state.master_info['supplier']} OAMI - {oami_avg:.2f}"
         mail_link = f"mailto:?subject={urllib.parse.quote(subject)}"
-        st.markdown(f'<a href="{mail_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:45px; border-radius:5px; border:none; cursor:pointer; background-color:#0078D4; color:white; font-weight:bold; font-size:16px;">📨 Open Outlook Mail App</button></a>', unsafe_allow_html=True)
+        st.markdown(f'<a href="{mail_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:45px; border-radius:5px; border:none; cursor:pointer; background-color:#333333; color:white; font-weight:bold; font-size:16px;">📨 Open Mail App</button></a>', unsafe_allow_html=True)
 
         st.write("---")
         
-        # [UPDATE] 다운로드 섹션: 보안 경고 및 성공 메시지 로직
         st.warning("⚠️ **Warning:** System backups are temporary and can be deleted at any time. **You must download the CSV file to keep your data permanently.**")
         
         csv_data = df.to_csv(index=False, encoding='utf-8-sig')
@@ -244,7 +258,6 @@ if st.session_state.is_evaluating:
             on_click=handle_download
         )
 
-        # [UPDATE] 다운로드 완료 시 요청하신 영어 메시지를 출력합니다.
         if st.session_state.download_completed:
             st.success("✅ System report has been deleted. Please save it in the appropriate folder.")
 
@@ -263,12 +276,20 @@ if st.session_state.is_evaluating:
                     if supplier and evaluator:
                         fname = get_backup_filename(supplier, evaluator)
                         if os.path.exists(fname): os.remove(fname)
+                    
                     st.session_state.master_info = {"supplier": "", "evaluator": ""}
                     st.session_state.process_list = []
                     st.session_state.is_evaluating = False 
                     st.session_state.stop_backup = False
                     st.session_state.download_completed = False
                     st.session_state.show_confirm_clear = False 
+                    
+                    if 'p_name_input' in st.session_state: st.session_state.p_name_input = ""
+                    if 'p_desc_input' in st.session_state: st.session_state.p_desc_input = ""
+                    if 'p_type_input' in st.session_state: st.session_state.p_type_input = None
+                    if 'p_score_input' in st.session_state: st.session_state.p_score_input = None
+                    if 'p_remark_input' in st.session_state: st.session_state.p_remark_input = ""
+                    
                     st.rerun()
             with col_no:
                 if st.button("❌ No, Cancel", use_container_width=True):
