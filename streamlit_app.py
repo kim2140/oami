@@ -5,10 +5,10 @@ import urllib.parse
 # Streamlit 앱 내부에 사용자 정의 HTML과 JavaScript를 삽입하기 위한 라이브러리입니다.
 import streamlit.components.v1 as components
 
-# [UPDATE] 브라우저 탭 아이콘을 '평가' 의미를 담은 메모지(📝)로 변경하고 앱 이름(App)을 반영했습니다.
+# 페이지 설정: 아이콘(📝)과 탭 제목을 영문으로 설정
 st.set_page_config(page_title="Supplier OAMI", page_icon="📝", layout="centered")
 
-# [UPDATE] 메인 타이틀의 아이콘을 📝로 변경하고 'System'을 'App'으로 수정했습니다.
+# 메인 타이틀
 st.title("📝 Supplier OAMI Evaluation App")
 
 # 1. 세션 상태 초기화: 앱을 새로고침하기 전까지 입력한 데이터를 임시 보관합니다.
@@ -17,7 +17,7 @@ if 'master_info' not in st.session_state:
 if 'process_list' not in st.session_state:
     st.session_state.process_list = []
 
-# 2. 업체 및 평가자 정보 입력 (영문화 UI 유지)
+# 2. 업체 및 평가자 정보 입력
 with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=st.session_state.master_info["supplier"] == ""):
     sub_col1, sub_col2 = st.columns(2)
     with sub_col1:
@@ -34,7 +34,7 @@ with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=st.session_s
 if st.session_state.master_info["supplier"]:
     st.info(f"📍 Supplier: **{st.session_state.master_info['supplier']}** | Evaluator: **{st.session_state.master_info['evaluator']}**")
     
-    # 3. 공정별 상세 평가 입력 (Radio 버튼 및 Remark 필드 포함)
+    # 3. 공정별 상세 평가 입력
     with st.form("pami_input_form", clear_on_submit=True):
         st.subheader("📝 Step 2: PAMI Input per Process")
         
@@ -60,7 +60,7 @@ if st.session_state.master_info["supplier"]:
             label_visibility="collapsed" 
         )
         
-        # Remark 필드 추가
+        # Remark 필드
         p_remark = st.text_input("Remark (Optional)", placeholder="Add any specific notes...")
         
         add_button = st.form_submit_button("Add to List")
@@ -86,19 +86,26 @@ if st.session_state.master_info["supplier"]:
                 st.session_state.process_list.append(new_process)
                 st.toast(f"Added No.{current_no}")
 
-    # 4. 결과 요약 및 내보내기 (영문화 유지)
+    # 4. 결과 요약 및 내보내기
     if st.session_state.process_list:
         st.write("---")
         st.subheader("📊 Evaluation Summary")
         
         df = pd.DataFrame(st.session_state.process_list)
         
-        # [UPDATE] 컬럼 배치 순서: No.가 Process 바로 앞에 오도록 구성
+        # 컬럼 배치 순서: No.가 Process 바로 앞에 오도록 구성
         cols = ["Supplier", "Evaluator", "No.", "Process", "Type", "Description", "PAMI", "Remark", "Time"]
         df = df[cols]
         
+        # [UPDATE] 요약 지표 영역에 '전체 공정 수'와 'OAMI 평균'을 나란히 표시합니다.
         oami_avg = df["PAMI"].mean()
-        st.metric(label="Total OAMI Average", value=f"{oami_avg:.2f} / 5.0")
+        total_processes = len(df)
+        
+        m_col1, m_col2 = st.columns(2)
+        with m_col1:
+            st.metric(label="Total Processes", value=f"{total_processes}")
+        with m_col2:
+            st.metric(label="Total OAMI Average", value=f"{oami_avg:.2f} / 5.0")
         
         # 복사 방식 구분을 위한 탭 설정
         tab_text, tab_table = st.tabs(["📱 1. Mobile (Text Copy)", "🖥️ 2. PC (Table Copy)"])
@@ -106,19 +113,19 @@ if st.session_state.master_info["supplier"]:
         with tab_text:
             st.info("💡 Best for Mobile. Click the copy icon in the top right of the box.")
             
-            # 모바일용 파이프 구분 텍스트 표 생성 (순서 반영)
+            # [UPDATE] 모바일 텍스트 리포트에도 공정 수(Total Processes)를 추가했습니다.
             text_report = f"===================================================\n"
             text_report += f"              OAMI Evaluation Report\n"
             text_report += f"===================================================\n"
             text_report += f"▶ Supplier : {st.session_state.master_info['supplier']}\n"
             text_report += f"▶ Evaluator: {st.session_state.master_info['evaluator']}\n"
+            text_report += f"▶ Processes: {total_processes}\n"
             text_report += f"▶ Avg OAMI : {oami_avg:.2f} / 5.0\n"
             text_report += f"---------------------------------------------------\n"
             text_report += f"No. | Process | Type | PAMI | Description | Remark | Time\n"
             text_report += f"---------------------------------------------------\n"
             
             for i, row in df.iterrows():
-                # 데이터 출력 순서 반영 (No. -> Process -> Type ...)
                 text_report += f"{row['No.']:<3} | {row['Process']} | {row['Type']:<4} | {row['PAMI']}pt | {row['Description']} | {row['Remark']} | {row['Time']}\n"
             
             text_report += f"==================================================="
@@ -133,15 +140,17 @@ if st.session_state.master_info["supplier"]:
                 '<table border="1" cellpadding="8" style="border-collapse: collapse; text-align: left; font-family: Arial, sans-serif; width: 100%; background-color: #ffffff;">'
             )
             
+            # [UPDATE] 이메일용 HTML 요약 정보에도 공정 수(Total Processes)를 추가했습니다.
             email_content_html = f"""
             <div id="email-content" style="font-family: Arial, sans-serif; padding: 15px; border: 1px solid #ddd; background-color: #f8f9fa;">
                 <h3 style="color: #333; margin-top:0;">OAMI Report: {st.session_state.master_info['supplier']}</h3>
-                <p><strong>Average OAMI: <span style="color: blue;">{oami_avg:.2f} / 5.0</span></strong></p>
+                <p style="margin: 5px 0;"><strong>Total Processes:</strong> {total_processes}</p>
+                <p style="margin: 5px 0;"><strong>Average OAMI: <span style="color: blue;">{oami_avg:.2f} / 5.0</span></strong></p>
                 {html_table}
             </div>
             """
             
-            # 자바스크립트 기반 복사 버튼 (Rich Text 유지)
+            # 자바스크립트 기반 복사 버튼
             custom_html_with_copy_button = f"""
             <div style="margin-bottom: 10px;">
                 <button onclick="copyRichText()" style="width:100%; height:40px; background-color:#28a745; color:white; border:none; border-radius:5px; font-size:16px; font-weight:bold; cursor:pointer;">
