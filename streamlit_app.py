@@ -100,7 +100,7 @@ def process_form_submit():
         save_temp_backup()
         st.session_state.success_toast = f"Added No.{current_no}"
         
-        # 입력 필드 초기화
+        # 콜백 내에서의 안전한 필드 초기화
         st.session_state.p_name_input = ""
         st.session_state.p_desc_input = ""
         st.session_state.p_type_input = None
@@ -119,11 +119,8 @@ if 'is_evaluating' not in st.session_state:
     st.session_state.is_evaluating = False
 if 'stop_backup' not in st.session_state:
     st.session_state.stop_backup = False
-
-# [UPDATE] 오류의 원인이었던 초기화 변수명을 정확하게 'download_action_status'로 수정했습니다.
 if 'download_action_status' not in st.session_state:
     st.session_state.download_action_status = None
-
 if 'show_confirm_clear' not in st.session_state:
     st.session_state.show_confirm_clear = False
 if 'pami_form_error' not in st.session_state:
@@ -158,7 +155,6 @@ with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=not st.sessi
                     st.session_state.process_list = backup_options[selected_backup]['list']
                     st.session_state.is_evaluating = True
                     st.session_state.stop_backup = False
-                    # [UPDATE] 복구 시에도 상태 변수를 올바르게 초기화합니다.
                     st.session_state.download_action_status = None 
                     st.rerun()
         st.write("---")
@@ -229,7 +225,6 @@ if st.session_state.is_evaluating:
             for _, row in df.iterrows():
                 raw_text += f"{row['No.']}|{row['Process']}|{row['Type']}|{row['PAMI']}|{row['Description']}|{row['Remark']}|{row['Time']}\n"
 
-            # 텍스트를 JS로 안전하게 전달하기 위해 JSON 변환을 사용
             safe_raw_text = json.dumps(raw_text)
             
             copy_text_html = f"""
@@ -239,8 +234,6 @@ if st.session_state.is_evaluating:
             <script>
             function copyToClipboard() {{
                 var textToCopy = {safe_raw_text};
-                
-                // 최신 클립보드 API를 우선 시도
                 if (navigator.clipboard && window.isSecureContext) {{
                     navigator.clipboard.writeText(textToCopy).then(function() {{
                         showSuccess();
@@ -250,22 +243,16 @@ if st.session_state.is_evaluating:
                 }} else {{
                     fallbackCopyTextToClipboard(textToCopy);
                 }}
-
-                // 구버전 및 모바일 기기를 위한 완벽한 Fallback 처리
                 function fallbackCopyTextToClipboard(text) {{
                     var textArea = document.createElement("textarea");
                     textArea.value = text;
-                    
-                    // 화면 스크롤 방지 및 완벽한 숨김 처리
                     textArea.style.position = "fixed";
                     textArea.style.top = "0";
                     textArea.style.left = "0";
                     textArea.style.opacity = "0";
-                    
                     document.body.appendChild(textArea);
                     textArea.focus();
                     textArea.select();
-                    
                     try {{
                         var successful = document.execCommand('copy');
                         if(successful) {{ showSuccess(); }} 
@@ -275,7 +262,6 @@ if st.session_state.is_evaluating:
                     }}
                     document.body.removeChild(textArea);
                 }}
-
                 function showSuccess() {{
                     var btn = document.querySelector('button');
                     btn.innerText = '✅ Copied!';
@@ -373,15 +359,14 @@ if st.session_state.is_evaluating:
                     st.session_state.process_list = []
                     st.session_state.is_evaluating = False 
                     st.session_state.stop_backup = False
-                    # [UPDATE] 데이터 지울 때도 상태 변수를 올바르게 초기화합니다.
                     st.session_state.download_action_status = None 
                     st.session_state.show_confirm_clear = False 
                     
-                    if 'p_name_input' in st.session_state: st.session_state.p_name_input = ""
-                    if 'p_desc_input' in st.session_state: st.session_state.p_desc_input = ""
-                    if 'p_type_input' in st.session_state: st.session_state.p_type_input = None
-                    if 'p_score_input' in st.session_state: st.session_state.p_score_input = None
-                    if 'p_remark_input' in st.session_state: st.session_state.p_remark_input = ""
+                    # [UPDATE] 에러 수정: 위젯 상태에 ""를 할당하지 않고, del을 사용하여 완전히 삭제합니다.
+                    keys_to_clear = ['p_name_input', 'p_desc_input', 'p_type_input', 'p_score_input', 'p_remark_input']
+                    for key in keys_to_clear:
+                        if key in st.session_state:
+                            del st.session_state[key]
                     
                     st.rerun()
             with col_no:
