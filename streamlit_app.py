@@ -11,6 +11,24 @@ import streamlit.components.v1 as components
 # 브라우저 탭 아이콘 및 제목 영문 설정
 st.set_page_config(page_title="Supplier OAMI", page_icon="📝", layout="centered")
 
+# 모바일 UI 최적화 CSS
+st.markdown("""
+<style>
+    @media screen and (max-width: 768px) {
+        div[data-testid="stHorizontalBlock"] {
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+            gap: 0.5rem !important;
+        }
+        div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+            width: 100% !important;
+            flex: 1 1 0 !important;
+            min-width: 0 !important;
+        }
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # 메인 타이틀
 st.title("📝 Supplier OAMI Evaluation App")
 
@@ -154,6 +172,10 @@ def process_form_submit():
     
     if st.session_state.is_inserting:
         target_idx = st.session_state.nav_index + 1
+        
+        # [UPDATE] 현재 삽입하려는 위치가 리스트의 맨 끝인지 확인합니다.
+        is_appending_at_end = (target_idx == len(st.session_state.process_list))
+        
         new_process = {
             "Supplier": st.session_state.master_info["supplier"],
             "Evaluator": st.session_state.master_info["evaluator"],
@@ -169,7 +191,14 @@ def process_form_submit():
         reindex_processes()
         
         st.session_state.nav_index = target_idx
-        st.session_state.is_inserting = True 
+        
+        # [UPDATE] 마지막 공정으로 추가한 경우 연속 입력을 위해 자동으로 빈 화면(New)을 띄우고,
+        # 중간에 끼워넣은 경우 방금 저장한 공정을 보여주는 수정(Edit) 화면에 머뭅니다.
+        if is_appending_at_end:
+            st.session_state.is_inserting = True
+        else:
+            st.session_state.is_inserting = False
+            
         st.session_state.success_toast = f"Added successfully as No. {target_idx + 1}"
     else:
         idx = st.session_state.nav_index
@@ -307,18 +336,15 @@ if st.session_state.is_evaluating:
         btn_text = "Save New Process" if st.session_state.is_inserting else "Update Process"
         st.form_submit_button(btn_text, on_click=process_form_submit)
 
-    # Cancel과 Delete 버튼
     if st.session_state.process_list or st.session_state.is_inserting:
         act_c1, act_c2 = st.columns(2)
         
-        # [UPDATE] Editing 모드(is_inserting == False)일 때는 Cancel 버튼이 비활성화 되도록 조건 수정
         cancel_disabled = (not st.session_state.is_inserting) or (len(st.session_state.process_list) == 0)
         with act_c1: st.button("🚫 Cancel", on_click=nav_cancel, disabled=cancel_disabled, use_container_width=True)
         
         del_disabled = st.session_state.is_inserting
         with act_c2: st.button("🗑️ Delete", on_click=set_delete_confirm, disabled=del_disabled, use_container_width=True)
 
-        # 삭제 경고창
         if st.session_state.show_delete_confirm and not st.session_state.is_inserting:
             st.error(f"⚠️ Are you sure you want to delete Process **No. {st.session_state.nav_index + 1}**?")
             d_col1, d_col2 = st.columns(2)
