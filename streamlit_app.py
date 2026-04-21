@@ -25,15 +25,13 @@ def get_backup_filename(supplier, evaluator):
     safe_eval = "".join(c for c in evaluator if c.isalnum() or c in " _-").strip()
     return os.path.join(BACKUP_DIR, f"{safe_sup}_{safe_eval}.json")
 
-# 오래된 백업 파일 정리 함수 (3일 경과 시 삭제)
+# 오래된 백업 파일 정리 함수
 def cleanup_old_backups():
     now = time.time()
     for f in glob.glob(os.path.join(BACKUP_DIR, "*.json")):
         if os.stat(f).st_mtime < now - (3 * 86400):
-            try:
-                os.remove(f)
-            except:
-                pass
+            try: os.remove(f)
+            except: pass
 
 # 실시간 자동 백업 함수
 def save_temp_backup():
@@ -52,7 +50,7 @@ def save_temp_backup():
     with open(fname, "w", encoding="utf-8") as f:
         json.dump(backup_data, f, ensure_ascii=False, indent=4)
 
-# 엑셀 다운로드 클릭 시 실행될 콜백 함수
+# 엑셀 다운로드 콜백 함수
 def handle_download():
     if st.session_state.get("delete_backup_checkbox", True):
         st.session_state.stop_backup = True
@@ -61,82 +59,89 @@ def handle_download():
         if supplier and evaluator:
             fname = get_backup_filename(supplier, evaluator)
             if os.path.exists(fname):
-                try:
-                    os.remove(fname)
-                except:
-                    pass
+                try: os.remove(fname)
+                except: pass
         st.session_state.download_action_status = "deleted"
     else:
         st.session_state.stop_backup = False
         st.session_state.download_action_status = "kept"
 
-# [NEW] 번호 재정렬 함수: 리스트의 순서대로 No.를 다시 1번부터 매깁니다. (삽입/삭제 시 호출됨)
+# 프로세스 리스트 재정렬 함수 (No. 업데이트)
 def reindex_processes():
     for i, p in enumerate(st.session_state.process_list):
         p["No."] = i + 1
 
-# [NEW] 삭제 확인창 제어 콜백
-def set_delete_confirm():
-    st.session_state.show_delete_confirm = True
-
-def cancel_delete():
-    st.session_state.show_delete_confirm = False
-
-# [NEW] 현재 선택된 프로세스 삭제 실행 콜백
-def delete_current_process():
-    idx = st.session_state.current_edit_index
-    if idx != -1 and idx < len(st.session_state.process_list):
-        st.session_state.process_list.pop(idx)
-        reindex_processes() # 삭제 후 번호 재정렬
-        save_temp_backup()
-        st.session_state.success_toast = f"Process No. {idx + 1} deleted."
-    
-    st.session_state.current_edit_index = -1
-    st.session_state.show_delete_confirm = False
-    
-    # 입력창 강제 초기화
-    keys_to_clear = ['p_name_input', 'p_desc_input', 'p_type_input', 'p_score_input', 'p_remark_input']
-    for key in keys_to_clear:
-        if key in st.session_state:
-            del st.session_state[key]
-
-# 프로세스 네비게이션 콜백 함수
-def navigate_process(direction):
-    total = len(st.session_state.process_list)
-    if total == 0: return
-
-    current = st.session_state.current_edit_index
-    
-    if direction == "prev":
-        new_idx = current - 1
-        if current == -1: new_idx = total - 1
-        elif new_idx < 0: new_idx = -1
-    elif direction == "next":
-        new_idx = current + 1
-        if new_idx >= total: new_idx = -1
-    elif direction == "new":
-        new_idx = -1
-
-    st.session_state.current_edit_index = new_idx
-    st.session_state.show_delete_confirm = False # 이동 시 삭제 경고창 닫기
-
-    if new_idx == -1:
+# =====================================================================
+# [UPDATE] 폼 네비게이션 및 상태 동기화 로직 (오류 없는 콜백 제어)
+# =====================================================================
+def sync_form_with_state():
+    """현재 선택된 nav_index 또는 신규 상태(is_inserting)에 맞춰 입력 폼 위젯을 강제 동기화합니다."""
+    if st.session_state.is_inserting:
         st.session_state.p_name_input = ""
         st.session_state.p_desc_input = ""
         st.session_state.p_type_input = None
         st.session_state.p_score_input = None
         st.session_state.p_remark_input = ""
     else:
-        p = st.session_state.process_list[new_idx]
-        st.session_state.p_name_input = p["Process"] if p["Process"] != "N/A" else ""
-        st.session_state.p_desc_input = p["Description"]
-        st.session_state.p_type_input = p["Type"]
-        st.session_state.p_score_input = p["PAMI"]
-        st.session_state.p_remark_input = p["Remark"]
-        
+        if len(st.session_state.process_list) > 0:
+            p = st.session_state.process_list[st.session_state.nav_index]
+            st.session_state.p_name_input = p["Process"] if p["Process"] != "N/A" else ""
+            st.session_state.p_desc_input = p["Description"]
+            st.session_state.p_type_input = p["Type"]
+            st.session_state.p_score_input = p["PAMI"]
+            st.session_state.p_remark_input = p["Remark"]
+    st.session_state.show_delete_confirm = False
     st.session_state.pami_form_error = ""
 
-# [UPDATE] 폼 제출 프로세스 (중간 삽입 기능 추가)
+def nav_prev():
+    if st.session_state.is_inserting and st.session_state.nav_index >= 0:
+        st.session_state.is_inserting = False
+    elif not st.session_state.is_inserting and st.session_state.nav_index > 0:
+        st.session_state.nav_index -= 1
+    sync_form_with_state()
+
+def nav_next():
+    if not st.session_state.is_inserting:
+        if st.session_state.nav_index < len(st.session_state.process_list) - 1:
+            st.session_state.nav_index += 1
+        else:
+            st.session_state.is_inserting = True
+    sync_form_with_state()
+
+def nav_new():
+    if not st.session_state.is_inserting:
+        st.session_state.is_inserting = True
+    sync_form_with_state()
+
+def nav_cancel():
+    if st.session_state.is_inserting and len(st.session_state.process_list) > 0:
+        st.session_state.is_inserting = False
+    sync_form_with_state()
+
+def set_delete_confirm():
+    st.session_state.show_delete_confirm = True
+
+def cancel_delete():
+    st.session_state.show_delete_confirm = False
+
+def delete_current_process():
+    idx = st.session_state.nav_index
+    if not st.session_state.is_inserting and 0 <= idx < len(st.session_state.process_list):
+        st.session_state.process_list.pop(idx)
+        reindex_processes()
+        
+        if len(st.session_state.process_list) == 0:
+            st.session_state.nav_index = -1
+            st.session_state.is_inserting = True
+        elif idx >= len(st.session_state.process_list):
+            st.session_state.nav_index = len(st.session_state.process_list) - 1
+            st.session_state.is_inserting = False
+        else:
+            st.session_state.is_inserting = False
+            
+        save_temp_backup()
+    sync_form_with_state()
+
 def process_form_submit():
     p_name = st.session_state.p_name_input
     p_desc = st.session_state.p_desc_input
@@ -146,56 +151,48 @@ def process_form_submit():
     
     if not p_desc or p_type is None or p_score is None:
         st.session_state.pami_form_error = "🚨 Fill in Description, Type, and Score."
+        return
+        
+    st.session_state.pami_form_error = ""
+    
+    if st.session_state.is_inserting:
+        target_idx = st.session_state.nav_index + 1
+        new_process = {
+            "Supplier": st.session_state.master_info["supplier"],
+            "Evaluator": st.session_state.master_info["evaluator"],
+            "No.": 0, # 재정렬 되므로 임시값
+            "Process": p_name if p_name else "N/A",
+            "Type": p_type,
+            "Description": p_desc,
+            "PAMI": p_score,
+            "Remark": p_remark if p_remark else "",
+            "Time": datetime.now().strftime("%H:%M:%S")
+        }
+        st.session_state.process_list.insert(target_idx, new_process)
+        reindex_processes()
+        
+        st.session_state.nav_index = target_idx
+        st.session_state.is_inserting = True # 저장 성공 시, 다음 데이터 입력을 위해 자동으로 빈 화면 유지
+        st.session_state.success_toast = f"Added successfully as No. {target_idx + 1}"
     else:
-        st.session_state.pami_form_error = ""
-        idx = st.session_state.current_edit_index
-        total = len(st.session_state.process_list)
+        idx = st.session_state.nav_index
+        p = st.session_state.process_list[idx]
+        p["Process"] = p_name if p_name else "N/A"
+        p["Description"] = p_desc
+        p["Type"] = p_type
+        p["PAMI"] = p_score
+        p["Remark"] = p_remark if p_remark else ""
+        p["Time"] = datetime.now().strftime("%H:%M:%S")
+        st.session_state.success_toast = f"Updated No. {idx + 1}"
         
-        # 신규 추가 또는 중간 삽입 (New / Insert)
-        if idx == -1:
-            # 사용자가 지정한 타겟 위치를 가져옵니다. (없으면 기본값으로 맨 끝)
-            target_pos = st.session_state.get("insert_pos_input", total + 1)
-            
-            new_process = {
-                "Supplier": st.session_state.master_info["supplier"],
-                "Evaluator": st.session_state.master_info["evaluator"],
-                "No.": 0, # 임시 번호, 곧 재정렬됩니다.
-                "Process": p_name if p_name else "N/A",
-                "Type": p_type,
-                "Description": p_desc,
-                "PAMI": p_score,
-                "Remark": p_remark if p_remark else "",
-                "Time": datetime.now().strftime("%H:%M:%S")
-            }
-            # 리스트의 특정 위치에 끼워 넣습니다.
-            st.session_state.process_list.insert(target_pos - 1, new_process)
-            reindex_processes() # 1번부터 차례대로 재정렬
-            st.session_state.success_toast = f"Added successfully as No. {target_pos}"
-            
-        # 기존 데이터 수정 (Update)
-        else:
-            p = st.session_state.process_list[idx]
-            p["Process"] = p_name if p_name else "N/A"
-            p["Description"] = p_desc
-            p["Type"] = p_type
-            p["PAMI"] = p_score
-            p["Remark"] = p_remark if p_remark else ""
-            p["Time"] = datetime.now().strftime("%H:%M:%S") 
-            st.session_state.success_toast = f"Updated No.{idx + 1}"
-            st.session_state.current_edit_index = -1 
-            
-        save_temp_backup()
-        
-        st.session_state.p_name_input = ""
-        st.session_state.p_desc_input = ""
-        st.session_state.p_type_input = None
-        st.session_state.p_score_input = None
-        st.session_state.p_remark_input = ""
+    save_temp_backup()
+    sync_form_with_state()
 
-# 앱 구동 시 3일 지난 백업 파일 청소
+# =====================================================================
+
 cleanup_old_backups()
 
-# 1. 세션 상태 초기화
+# 1. 세션 상태 초기화 (신규 변수들 반영)
 if 'master_info' not in st.session_state:
     st.session_state.master_info = {"supplier": "", "evaluator": ""}
 if 'process_list' not in st.session_state:
@@ -212,10 +209,14 @@ if 'pami_form_error' not in st.session_state:
     st.session_state.pami_form_error = ""
 if 'success_toast' not in st.session_state:
     st.session_state.success_toast = ""
-if 'current_edit_index' not in st.session_state:
-    st.session_state.current_edit_index = -1
 if 'show_delete_confirm' not in st.session_state:
     st.session_state.show_delete_confirm = False
+
+# [NEW] 상태 머신을 위한 핵심 변수
+if 'nav_index' not in st.session_state:
+    st.session_state.nav_index = -1
+if 'is_inserting' not in st.session_state:
+    st.session_state.is_inserting = True
 
 # 토스트 메시지 출력
 if st.session_state.success_toast:
@@ -245,8 +246,11 @@ with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=not st.sessi
                     st.session_state.is_evaluating = True
                     st.session_state.stop_backup = False
                     st.session_state.download_action_status = None 
-                    st.session_state.current_edit_index = -1
-                    st.session_state.show_delete_confirm = False
+                    
+                    # 복구 시 리스트의 맨 마지막으로 커서 이동
+                    st.session_state.nav_index = len(st.session_state.process_list) - 1
+                    st.session_state.is_inserting = True
+                    sync_form_with_state()
                     st.rerun()
         st.write("---")
     
@@ -274,45 +278,41 @@ if st.session_state.is_evaluating:
     if st.session_state.stop_backup:
         st.warning("⚠️ CSV downloaded. Automatic backup is now disabled for this session.")
     
-    # [UPDATE] 상단 네비게이션 버튼 (Delete 버튼 추가)
-    if st.session_state.process_list:
-        nav_col1, nav_col2, nav_col3, nav_col4 = st.columns(4)
-        with nav_col1:
-            st.button("⬅️ Prev", on_click=navigate_process, args=("prev",), use_container_width=True)
-        with nav_col2:
-            st.button("Next ➡️", on_click=navigate_process, args=("next",), use_container_width=True)
-        with nav_col3:
-            # 삭제 버튼은 현재 수정 모드(current_edit_index != -1)일 때만 활성화됩니다.
-            st.button("🗑️ Delete", on_click=set_delete_confirm, disabled=(st.session_state.current_edit_index == -1), use_container_width=True)
-        with nav_col4:
-            st.button("➕ New", on_click=navigate_process, args=("new",), use_container_width=True)
+    # [UPDATE] 5버튼 네비게이션 레이아웃 배치
+    if st.session_state.process_list or st.session_state.is_inserting:
+        nav_c1, nav_c2, nav_c3, nav_c4, nav_c5 = st.columns(5)
+        
+        prev_disabled = len(st.session_state.process_list) == 0 or (st.session_state.nav_index <= 0 and not st.session_state.is_inserting)
+        with nav_c1: st.button("⬅️ Prev", on_click=nav_prev, disabled=prev_disabled, use_container_width=True)
+        
+        next_disabled = st.session_state.is_inserting
+        with nav_c2: st.button("Next ➡️", on_click=nav_next, disabled=next_disabled, use_container_width=True)
+        
+        new_disabled = st.session_state.is_inserting
+        with nav_c3: st.button("➕ New", on_click=nav_new, disabled=new_disabled, use_container_width=True)
+        
+        cancel_disabled = len(st.session_state.process_list) == 0
+        with nav_c4: st.button("🚫 Cancel", on_click=nav_cancel, disabled=cancel_disabled, use_container_width=True)
+        
+        del_disabled = st.session_state.is_inserting
+        with nav_c5: st.button("🗑️ Delete", on_click=set_delete_confirm, disabled=del_disabled, use_container_width=True)
 
-        # [NEW] 삭제 버튼 클릭 시 나타나는 경고 및 확인 영역
-        if st.session_state.show_delete_confirm and st.session_state.current_edit_index != -1:
-            st.error(f"⚠️ Are you sure you want to delete Process **No. {st.session_state.current_edit_index + 1}**? This cannot be undone.")
+        if st.session_state.show_delete_confirm and not st.session_state.is_inserting:
+            st.error(f"⚠️ Are you sure you want to delete Process **No. {st.session_state.nav_index + 1}**?")
             d_col1, d_col2 = st.columns(2)
-            with d_col1:
-                st.button("✔️ Yes, Delete", on_click=delete_current_process, use_container_width=True)
-            with d_col2:
-                st.button("❌ Cancel", on_click=cancel_delete, use_container_width=True)
+            with d_col1: st.button("✔️ Yes, Delete", on_click=delete_current_process, use_container_width=True)
+            with d_col2: st.button("❌ Cancel", on_click=cancel_delete, use_container_width=True)
 
         st.write("") 
-        if st.session_state.current_edit_index == -1:
-            st.markdown("<div style='text-align: center; font-weight: bold; font-size: 1.1em; color: #0d6efd;'>✨ Add New Process</div>", unsafe_allow_html=True)
+        if st.session_state.is_inserting:
+            target_no = st.session_state.nav_index + 2
+            st.markdown(f"<div style='text-align: center; font-weight: bold; font-size: 1.1em; color: #0d6efd;'>✨ Add New Process as No. {target_no}</div>", unsafe_allow_html=True)
         else:
-            st.markdown(f"<div style='text-align: center; font-weight: bold; font-size: 1.1em; color: #198754;'>✏️ Editing No.{st.session_state.current_edit_index + 1}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align: center; font-weight: bold; font-size: 1.1em; color: #198754;'>✏️ Editing No. {st.session_state.nav_index + 1}</div>", unsafe_allow_html=True)
 
     with st.form("pami_input_form", clear_on_submit=False):
         st.subheader("📝 Step 2: PAMI Input per Process")
         
-        # [NEW] 신규 작성 모드일 때만 '삽입 위치(Target Position)' 옵션을 보여줍니다.
-        if st.session_state.current_edit_index == -1 and len(st.session_state.process_list) > 0:
-            max_pos = len(st.session_state.process_list) + 1
-            st.write("**Target Position (No.)**")
-            st.number_input("Insert Position", min_value=1, max_value=max_pos, value=max_pos, step=1, key="insert_pos_input", label_visibility="collapsed")
-            st.caption("💡 Select the number where this process will be placed. Existing items will be shifted down.")
-            st.write("---")
-
         if st.session_state.pami_form_error:
             st.error(st.session_state.pami_form_error)
         
@@ -324,7 +324,7 @@ if st.session_state.is_evaluating:
         st.radio("Score", options=[1, 2, 3, 4, 5], index=None, horizontal=True, label_visibility="collapsed", key="p_score_input")
         st.text_input("Remark (Optional)", key="p_remark_input")
         
-        btn_text = "Update Process" if st.session_state.current_edit_index != -1 else "Save to List"
+        btn_text = "Save New Process" if st.session_state.is_inserting else "Update Process"
         st.form_submit_button(btn_text, on_click=process_form_submit)
 
     # 4. Evaluation Summary & Export
@@ -492,14 +492,12 @@ if st.session_state.is_evaluating:
                     st.session_state.stop_backup = False
                     st.session_state.download_action_status = None 
                     st.session_state.show_confirm_clear = False 
-                    st.session_state.current_edit_index = -1 
+                    
+                    st.session_state.nav_index = -1 
+                    st.session_state.is_inserting = True
                     st.session_state.show_delete_confirm = False
                     
-                    keys_to_clear = ['p_name_input', 'p_desc_input', 'p_type_input', 'p_score_input', 'p_remark_input', 'insert_pos_input']
-                    for key in keys_to_clear:
-                        if key in st.session_state:
-                            del st.session_state[key]
-                    
+                    sync_form_with_state()
                     st.rerun()
             with col_no:
                 if st.button("❌ No, Cancel", use_container_width=True):
