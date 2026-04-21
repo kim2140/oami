@@ -54,7 +54,6 @@ def save_temp_backup():
 
 # 엑셀 다운로드 클릭 시 실행될 콜백 함수
 def handle_download():
-    # 사용자가 체크박스를 선택하여 삭제를 원할 때만 파일 삭제 로직을 수행합니다.
     if st.session_state.get("delete_backup_checkbox", True):
         st.session_state.stop_backup = True
         supplier = st.session_state.master_info.get("supplier", "")
@@ -68,9 +67,38 @@ def handle_download():
                     pass
         st.session_state.download_action_status = "deleted"
     else:
-        # 삭제하지 않는 옵션 선택 시, 백업을 유지합니다.
         st.session_state.stop_backup = False
         st.session_state.download_action_status = "kept"
+
+# [NEW] 번호 재정렬 함수: 리스트의 순서대로 No.를 다시 1번부터 매깁니다. (삽입/삭제 시 호출됨)
+def reindex_processes():
+    for i, p in enumerate(st.session_state.process_list):
+        p["No."] = i + 1
+
+# [NEW] 삭제 확인창 제어 콜백
+def set_delete_confirm():
+    st.session_state.show_delete_confirm = True
+
+def cancel_delete():
+    st.session_state.show_delete_confirm = False
+
+# [NEW] 현재 선택된 프로세스 삭제 실행 콜백
+def delete_current_process():
+    idx = st.session_state.current_edit_index
+    if idx != -1 and idx < len(st.session_state.process_list):
+        st.session_state.process_list.pop(idx)
+        reindex_processes() # 삭제 후 번호 재정렬
+        save_temp_backup()
+        st.session_state.success_toast = f"Process No. {idx + 1} deleted."
+    
+    st.session_state.current_edit_index = -1
+    st.session_state.show_delete_confirm = False
+    
+    # 입력창 강제 초기화
+    keys_to_clear = ['p_name_input', 'p_desc_input', 'p_type_input', 'p_score_input', 'p_remark_input']
+    for key in keys_to_clear:
+        if key in st.session_state:
+            del st.session_state[key]
 
 # 프로세스 네비게이션 콜백 함수
 def navigate_process(direction):
@@ -90,8 +118,8 @@ def navigate_process(direction):
         new_idx = -1
 
     st.session_state.current_edit_index = new_idx
+    st.session_state.show_delete_confirm = False # 이동 시 삭제 경고창 닫기
 
-    # 선택된 인덱스에 따라 입력창 초기화 또는 데이터 로드
     if new_idx == -1:
         st.session_state.p_name_input = ""
         st.session_state.p_desc_input = ""
@@ -108,7 +136,7 @@ def navigate_process(direction):
         
     st.session_state.pami_form_error = ""
 
-# 폼 제출 프로세스 (조건부 초기화)
+# [UPDATE] 폼 제출 프로세스 (중간 삽입 기능 추가)
 def process_form_submit():
     p_name = st.session_state.p_name_input
     p_desc = st.session_state.p_desc_input
@@ -121,14 +149,17 @@ def process_form_submit():
     else:
         st.session_state.pami_form_error = ""
         idx = st.session_state.current_edit_index
+        total = len(st.session_state.process_list)
         
-        # 신규 추가 (New)
+        # 신규 추가 또는 중간 삽입 (New / Insert)
         if idx == -1:
-            current_no = len(st.session_state.process_list) + 1
+            # 사용자가 지정한 타겟 위치를 가져옵니다. (없으면 기본값으로 맨 끝)
+            target_pos = st.session_state.get("insert_pos_input", total + 1)
+            
             new_process = {
                 "Supplier": st.session_state.master_info["supplier"],
                 "Evaluator": st.session_state.master_info["evaluator"],
-                "No.": current_no,
+                "No.": 0, # 임시 번호, 곧 재정렬됩니다.
                 "Process": p_name if p_name else "N/A",
                 "Type": p_type,
                 "Description": p_desc,
@@ -136,9 +167,11 @@ def process_form_submit():
                 "Remark": p_remark if p_remark else "",
                 "Time": datetime.now().strftime("%H:%M:%S")
             }
-            st.session_state.process_list.append(new_process)
-            st.session_state.success_toast = f"Added No.{current_no}"
-        
+            # 리스트의 특정 위치에 끼워 넣습니다.
+            st.session_state.process_list.insert(target_pos - 1, new_process)
+            reindex_processes() # 1번부터 차례대로 재정렬
+            st.session_state.success_toast = f"Added successfully as No. {target_pos}"
+            
         # 기존 데이터 수정 (Update)
         else:
             p = st.session_state.process_list[idx]
@@ -147,13 +180,12 @@ def process_form_submit():
             p["Type"] = p_type
             p["PAMI"] = p_score
             p["Remark"] = p_remark if p_remark else ""
-            p["Time"] = datetime.now().strftime("%H:%M:%S") # 시간 업데이트
+            p["Time"] = datetime.now().strftime("%H:%M:%S") 
             st.session_state.success_toast = f"Updated No.{idx + 1}"
-            st.session_state.current_edit_index = -1 # 수정 완료 후 다시 New 모드로 전환
+            st.session_state.current_edit_index = -1 
             
         save_temp_backup()
         
-        # 콜백 내에서의 안전한 필드 초기화
         st.session_state.p_name_input = ""
         st.session_state.p_desc_input = ""
         st.session_state.p_type_input = None
@@ -182,6 +214,8 @@ if 'success_toast' not in st.session_state:
     st.session_state.success_toast = ""
 if 'current_edit_index' not in st.session_state:
     st.session_state.current_edit_index = -1
+if 'show_delete_confirm' not in st.session_state:
+    st.session_state.show_delete_confirm = False
 
 # 토스트 메시지 출력
 if st.session_state.success_toast:
@@ -212,6 +246,7 @@ with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=not st.sessi
                     st.session_state.stop_backup = False
                     st.session_state.download_action_status = None 
                     st.session_state.current_edit_index = -1
+                    st.session_state.show_delete_confirm = False
                     st.rerun()
         st.write("---")
     
@@ -239,19 +274,29 @@ if st.session_state.is_evaluating:
     if st.session_state.stop_backup:
         st.warning("⚠️ CSV downloaded. Automatic backup is now disabled for this session.")
     
-    # [UPDATE] 모바일 화면에서 버튼 배치가 깨지지 않도록 버튼용 컬럼과 텍스트 영역을 완전히 분리했습니다.
+    # [UPDATE] 상단 네비게이션 버튼 (Delete 버튼 추가)
     if st.session_state.process_list:
-        # 버튼 3개를 나란히 배치
-        nav_col1, nav_col2, nav_col3 = st.columns(3)
+        nav_col1, nav_col2, nav_col3, nav_col4 = st.columns(4)
         with nav_col1:
             st.button("⬅️ Prev", on_click=navigate_process, args=("prev",), use_container_width=True)
         with nav_col2:
             st.button("Next ➡️", on_click=navigate_process, args=("next",), use_container_width=True)
         with nav_col3:
+            # 삭제 버튼은 현재 수정 모드(current_edit_index != -1)일 때만 활성화됩니다.
+            st.button("🗑️ Delete", on_click=set_delete_confirm, disabled=(st.session_state.current_edit_index == -1), use_container_width=True)
+        with nav_col4:
             st.button("➕ New", on_click=navigate_process, args=("new",), use_container_width=True)
 
-        # [UPDATE] 폼 바로 위(버튼들 아래)에 현재 상태 텍스트를 배치합니다.
-        st.write("") # 약간의 시각적 여백 추가
+        # [NEW] 삭제 버튼 클릭 시 나타나는 경고 및 확인 영역
+        if st.session_state.show_delete_confirm and st.session_state.current_edit_index != -1:
+            st.error(f"⚠️ Are you sure you want to delete Process **No. {st.session_state.current_edit_index + 1}**? This cannot be undone.")
+            d_col1, d_col2 = st.columns(2)
+            with d_col1:
+                st.button("✔️ Yes, Delete", on_click=delete_current_process, use_container_width=True)
+            with d_col2:
+                st.button("❌ Cancel", on_click=cancel_delete, use_container_width=True)
+
+        st.write("") 
         if st.session_state.current_edit_index == -1:
             st.markdown("<div style='text-align: center; font-weight: bold; font-size: 1.1em; color: #0d6efd;'>✨ Add New Process</div>", unsafe_allow_html=True)
         else:
@@ -259,6 +304,15 @@ if st.session_state.is_evaluating:
 
     with st.form("pami_input_form", clear_on_submit=False):
         st.subheader("📝 Step 2: PAMI Input per Process")
+        
+        # [NEW] 신규 작성 모드일 때만 '삽입 위치(Target Position)' 옵션을 보여줍니다.
+        if st.session_state.current_edit_index == -1 and len(st.session_state.process_list) > 0:
+            max_pos = len(st.session_state.process_list) + 1
+            st.write("**Target Position (No.)**")
+            st.number_input("Insert Position", min_value=1, max_value=max_pos, value=max_pos, step=1, key="insert_pos_input", label_visibility="collapsed")
+            st.caption("💡 Select the number where this process will be placed. Existing items will be shifted down.")
+            st.write("---")
+
         if st.session_state.pami_form_error:
             st.error(st.session_state.pami_form_error)
         
@@ -270,7 +324,7 @@ if st.session_state.is_evaluating:
         st.radio("Score", options=[1, 2, 3, 4, 5], index=None, horizontal=True, label_visibility="collapsed", key="p_score_input")
         st.text_input("Remark (Optional)", key="p_remark_input")
         
-        btn_text = "Update Process" if st.session_state.current_edit_index != -1 else "Add to List"
+        btn_text = "Update Process" if st.session_state.current_edit_index != -1 else "Save to List"
         st.form_submit_button(btn_text, on_click=process_form_submit)
 
     # 4. Evaluation Summary & Export
@@ -439,8 +493,9 @@ if st.session_state.is_evaluating:
                     st.session_state.download_action_status = None 
                     st.session_state.show_confirm_clear = False 
                     st.session_state.current_edit_index = -1 
+                    st.session_state.show_delete_confirm = False
                     
-                    keys_to_clear = ['p_name_input', 'p_desc_input', 'p_type_input', 'p_score_input', 'p_remark_input']
+                    keys_to_clear = ['p_name_input', 'p_desc_input', 'p_type_input', 'p_score_input', 'p_remark_input', 'insert_pos_input']
                     for key in keys_to_clear:
                         if key in st.session_state:
                             del st.session_state[key]
