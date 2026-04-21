@@ -11,11 +11,9 @@ import streamlit.components.v1 as components
 # 브라우저 탭 아이콘 및 제목 영문 설정
 st.set_page_config(page_title="Supplier OAMI", page_icon="📝", layout="centered")
 
-# [UPDATE] 화면을 깨지게 만들었던 강제 가로 정렬 CSS 코드를 완전히 삭제했습니다.
-# 이제 모바일 환경에서는 Streamlit 기본 동작에 따라 안전하게 세로로 배열됩니다.
-
 # 메인 타이틀
-st.title("📝 Supplier OAMI Evaluation App")
+# [UPDATE] 글자 크기를 줄이고 굵게(Bold) 통일하여 공간 낭비를 줄였습니다.
+st.markdown("### 📝 Supplier OAMI Evaluation App")
 
 # 백업 전용 폴더 설정
 BACKUP_DIR = "oami_backups"
@@ -232,7 +230,8 @@ if st.session_state.success_toast:
 with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=not st.session_state.is_evaluating):
     backup_files = glob.glob(os.path.join(BACKUP_DIR, "*.json"))
     if backup_files and not st.session_state.is_evaluating:
-        st.subheader("Check Backup History (Past 3 Days)")
+        # [UPDATE] 소제목 크기를 줄이고 굵게 통일했습니다.
+        st.markdown("**Check Backup History (Past 3 Days)**")
         backup_options = {}
         for bf in backup_files:
             try:
@@ -295,14 +294,17 @@ if st.session_state.is_evaluating:
         with nav_c3: st.button("➕ New", on_click=nav_new, disabled=new_disabled, use_container_width=True)
 
         st.write("") 
+        # [UPDATE] 폰트 크기를 통일하고, Editing 시 Description을 함께 표시하여 직관성을 높였습니다.
         if st.session_state.is_inserting:
             target_no = st.session_state.nav_index + 2
-            st.markdown(f"<div style='text-align: center; font-weight: bold; font-size: 1.1em; color: #0d6efd;'>✨ Add New Process as No. {target_no}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align: center; font-weight: bold; color: #0d6efd;'>✨ Add New Process as No. {target_no}</div>", unsafe_allow_html=True)
         else:
-            st.markdown(f"<div style='text-align: center; font-weight: bold; font-size: 1.1em; color: #198754;'>✏️ Editing No. {st.session_state.nav_index + 1}</div>", unsafe_allow_html=True)
+            current_desc = st.session_state.process_list[st.session_state.nav_index].get('Description', '')
+            st.markdown(f"<div style='text-align: center; font-weight: bold; color: #198754;'>✏️ Editing No. {st.session_state.nav_index + 1} : {current_desc}</div>", unsafe_allow_html=True)
 
     with st.form("pami_input_form", clear_on_submit=False):
-        st.subheader("📝 Step 2: PAMI Input per Process")
+        # [UPDATE] 큰 헤더 대신 기본 텍스트 굵게 처리하여 세로 공간 절약
+        st.markdown("**📝 Step 2: PAMI Input per Process**")
         
         if st.session_state.pami_form_error:
             st.error(st.session_state.pami_form_error)
@@ -318,7 +320,6 @@ if st.session_state.is_evaluating:
         btn_text = "Save New Process" if st.session_state.is_inserting else "Update Process"
         st.form_submit_button(btn_text, on_click=process_form_submit)
 
-    # Cancel과 Delete 버튼
     if st.session_state.process_list or st.session_state.is_inserting:
         act_c1, act_c2 = st.columns(2)
         
@@ -337,7 +338,8 @@ if st.session_state.is_evaluating:
     # 4. Evaluation Summary & Export
     if st.session_state.process_list:
         st.write("---")
-        st.subheader("📊 Evaluation Summary")
+        # [UPDATE] 큰 헤더 대신 기본 텍스트 굵게 처리하여 세로 공간 절약
+        st.markdown("**📊 Evaluation Summary**")
         
         df = pd.DataFrame(st.session_state.process_list)
         cols = ["Supplier", "Evaluator", "No.", "Process", "Type", "Description", "PAMI", "Remark", "Time"]
@@ -364,8 +366,9 @@ if st.session_state.is_evaluating:
             
             safe_raw_text = json.dumps(raw_text)
             
+            # [UPDATE] HTML 삽입 버튼 폰트 사이즈를 기본 14px 텍스트 크기 단위로 맞추었습니다.
             copy_text_html = f"""
-            <button onclick="copyToClipboard()" style="width: 100%; height: 40px; background-color: #0d6efd; color: white; border: none; border-radius: 5px; font-weight: bold; font-size: 16px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <button onclick="copyToClipboard()" style="width: 100%; height: 40px; background-color: #0d6efd; color: white; border: none; border-radius: 5px; font-weight: bold; font-size: 14px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                 📋 Copy Text for Outlook
             </button>
             <script>
@@ -418,10 +421,12 @@ if st.session_state.is_evaluating:
         with tab_pc:
             st.info("💡 Wide and clean table copy optimized for PC environments. **Note:** Tables cannot be auto-filled in the Mail App. You must copy and paste this table manually.")
             html_table = df.to_html(index=False).replace('<table border="1" class="dataframe">', '<table border="1" cellpadding="8" style="border-collapse: collapse; text-align: left; font-family: Arial; width: 100%;">')
-            email_html = f"<div id='pc-email-content' style='background:#f8f9fa; padding:15px;'><h3 style='margin-top:0;'>OAMI Report: {st.session_state.master_info['supplier']}</h3><p><strong>Total Processes:</strong> {total_processes}</p><p><strong>Average OAMI: <span style='color:blue;'>{oami_avg:.2f} / 5.0</span></strong></p>{html_table}</div>"
+            
+            # [UPDATE] 큰 헤더 사이즈 <h3> 대신 굵은 글씨로 통일했습니다.
+            email_html = f"<div id='pc-email-content' style='background:#f8f9fa; padding:15px;'><strong>OAMI Report: {st.session_state.master_info['supplier']}</strong><br><br><strong>Total Processes:</strong> {total_processes}<br><strong>Average OAMI: <span style='color:blue;'>{oami_avg:.2f} / 5.0</span></strong><br><br>{html_table}</div>"
             
             copy_table_html = f"""
-            <button onclick='copyPCTable()' style='width:100%; height:40px; background-color:#28a745; color:white; border:none; border-radius:5px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
+            <button onclick='copyPCTable()' style='width:100%; height:40px; background-color:#28a745; color:white; border:none; border-radius:5px; font-weight:bold; font-size:14px; cursor:pointer; margin-bottom:10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
                 📋 Copy Table for Outlook
             </button>
             <script>
@@ -454,7 +459,8 @@ if st.session_state.is_evaluating:
         subject = f"OAMI Evaluation - {st.session_state.master_info['supplier']} OAMI - {oami_avg:.2f}"
         body_encoded = urllib.parse.quote(raw_text)
         mail_link = f"mailto:?subject={urllib.parse.quote(subject)}&body={body_encoded}"
-        st.markdown(f'<a href="{mail_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:45px; border-radius:5px; border:none; cursor:pointer; background-color:#0078D4; color:white; font-weight:bold; font-size:16px;">📨 Open Outlook Mail App (Auto-fill Text)</button></a>', unsafe_allow_html=True)
+        # [UPDATE] 오픈 메일 버튼 폰트 사이즈도 14px로 통일했습니다.
+        st.markdown(f'<a href="{mail_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:45px; border-radius:5px; border:none; cursor:pointer; background-color:#0078D4; color:white; font-weight:bold; font-size:14px;">📨 Open Outlook Mail App (Auto-fill Text)</button></a>', unsafe_allow_html=True)
 
         st.write("---")
         
