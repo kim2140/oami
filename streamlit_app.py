@@ -11,6 +11,24 @@ import streamlit.components.v1 as components
 # 브라우저 탭 아이콘 및 제목 영문 설정
 st.set_page_config(page_title="Supplier OAMI", page_icon="📝", layout="centered")
 
+# 모바일 UI 최적화 CSS: 스마트폰 화면에서 버튼들이 세로로 길게 쌓이는 것을 막고 가로 배열을 유지합니다.
+st.markdown("""
+<style>
+    @media screen and (max-width: 768px) {
+        div[data-testid="stHorizontalBlock"] {
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+            gap: 0.5rem !important;
+        }
+        div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+            width: 100% !important;
+            flex: 1 1 0 !important;
+            min-width: 0 !important;
+        }
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # 메인 타이틀
 st.title("📝 Supplier OAMI Evaluation App")
 
@@ -71,11 +89,8 @@ def reindex_processes():
     for i, p in enumerate(st.session_state.process_list):
         p["No."] = i + 1
 
-# =====================================================================
-# [UPDATE] 폼 네비게이션 및 상태 동기화 로직 (오류 없는 콜백 제어)
-# =====================================================================
+# 폼 네비게이션 및 상태 동기화 로직
 def sync_form_with_state():
-    """현재 선택된 nav_index 또는 신규 상태(is_inserting)에 맞춰 입력 폼 위젯을 강제 동기화합니다."""
     if st.session_state.is_inserting:
         st.session_state.p_name_input = ""
         st.session_state.p_desc_input = ""
@@ -160,7 +175,7 @@ def process_form_submit():
         new_process = {
             "Supplier": st.session_state.master_info["supplier"],
             "Evaluator": st.session_state.master_info["evaluator"],
-            "No.": 0, # 재정렬 되므로 임시값
+            "No.": 0, 
             "Process": p_name if p_name else "N/A",
             "Type": p_type,
             "Description": p_desc,
@@ -172,7 +187,7 @@ def process_form_submit():
         reindex_processes()
         
         st.session_state.nav_index = target_idx
-        st.session_state.is_inserting = True # 저장 성공 시, 다음 데이터 입력을 위해 자동으로 빈 화면 유지
+        st.session_state.is_inserting = True 
         st.session_state.success_toast = f"Added successfully as No. {target_idx + 1}"
     else:
         idx = st.session_state.nav_index
@@ -188,11 +203,10 @@ def process_form_submit():
     save_temp_backup()
     sync_form_with_state()
 
-# =====================================================================
-
+# 앱 구동 시 3일 지난 백업 파일 청소
 cleanup_old_backups()
 
-# 1. 세션 상태 초기화 (신규 변수들 반영)
+# 1. 세션 상태 초기화 
 if 'master_info' not in st.session_state:
     st.session_state.master_info = {"supplier": "", "evaluator": ""}
 if 'process_list' not in st.session_state:
@@ -211,8 +225,6 @@ if 'success_toast' not in st.session_state:
     st.session_state.success_toast = ""
 if 'show_delete_confirm' not in st.session_state:
     st.session_state.show_delete_confirm = False
-
-# [NEW] 상태 머신을 위한 핵심 변수
 if 'nav_index' not in st.session_state:
     st.session_state.nav_index = -1
 if 'is_inserting' not in st.session_state:
@@ -247,7 +259,6 @@ with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=not st.sessi
                     st.session_state.stop_backup = False
                     st.session_state.download_action_status = None 
                     
-                    # 복구 시 리스트의 맨 마지막으로 커서 이동
                     st.session_state.nav_index = len(st.session_state.process_list) - 1
                     st.session_state.is_inserting = True
                     sync_form_with_state()
@@ -278,9 +289,9 @@ if st.session_state.is_evaluating:
     if st.session_state.stop_backup:
         st.warning("⚠️ CSV downloaded. Automatic backup is now disabled for this session.")
     
-    # [UPDATE] 5버튼 네비게이션 레이아웃 배치
     if st.session_state.process_list or st.session_state.is_inserting:
-        nav_c1, nav_c2, nav_c3, nav_c4, nav_c5 = st.columns(5)
+        # [UPDATE] 폼 상단에는 오직 네비게이션(이동/추가) 버튼만 남겨둡니다.
+        nav_c1, nav_c2, nav_c3 = st.columns(3)
         
         prev_disabled = len(st.session_state.process_list) == 0 or (st.session_state.nav_index <= 0 and not st.session_state.is_inserting)
         with nav_c1: st.button("⬅️ Prev", on_click=nav_prev, disabled=prev_disabled, use_container_width=True)
@@ -290,18 +301,6 @@ if st.session_state.is_evaluating:
         
         new_disabled = st.session_state.is_inserting
         with nav_c3: st.button("➕ New", on_click=nav_new, disabled=new_disabled, use_container_width=True)
-        
-        cancel_disabled = len(st.session_state.process_list) == 0
-        with nav_c4: st.button("🚫 Cancel", on_click=nav_cancel, disabled=cancel_disabled, use_container_width=True)
-        
-        del_disabled = st.session_state.is_inserting
-        with nav_c5: st.button("🗑️ Delete", on_click=set_delete_confirm, disabled=del_disabled, use_container_width=True)
-
-        if st.session_state.show_delete_confirm and not st.session_state.is_inserting:
-            st.error(f"⚠️ Are you sure you want to delete Process **No. {st.session_state.nav_index + 1}**?")
-            d_col1, d_col2 = st.columns(2)
-            with d_col1: st.button("✔️ Yes, Delete", on_click=delete_current_process, use_container_width=True)
-            with d_col2: st.button("❌ Cancel", on_click=cancel_delete, use_container_width=True)
 
         st.write("") 
         if st.session_state.is_inserting:
@@ -326,6 +325,23 @@ if st.session_state.is_evaluating:
         
         btn_text = "Save New Process" if st.session_state.is_inserting else "Update Process"
         st.form_submit_button(btn_text, on_click=process_form_submit)
+
+    # [UPDATE] Cancel과 Delete 버튼을 입력 폼(Save/Update 버튼) 바로 아래로 이동시켰습니다.
+    if st.session_state.process_list or st.session_state.is_inserting:
+        act_c1, act_c2 = st.columns(2)
+        
+        cancel_disabled = len(st.session_state.process_list) == 0
+        with act_c1: st.button("🚫 Cancel", on_click=nav_cancel, disabled=cancel_disabled, use_container_width=True)
+        
+        del_disabled = st.session_state.is_inserting
+        with act_c2: st.button("🗑️ Delete", on_click=set_delete_confirm, disabled=del_disabled, use_container_width=True)
+
+        # 삭제 경고창도 Delete 버튼 바로 아래에 나타나도록 배치했습니다.
+        if st.session_state.show_delete_confirm and not st.session_state.is_inserting:
+            st.error(f"⚠️ Are you sure you want to delete Process **No. {st.session_state.nav_index + 1}**?")
+            d_col1, d_col2 = st.columns(2)
+            with d_col1: st.button("✔️ Yes, Delete", on_click=delete_current_process, use_container_width=True)
+            with d_col2: st.button("❌ Cancel", on_click=cancel_delete, use_container_width=True)
 
     # 4. Evaluation Summary & Export
     if st.session_state.process_list:
@@ -497,7 +513,11 @@ if st.session_state.is_evaluating:
                     st.session_state.is_inserting = True
                     st.session_state.show_delete_confirm = False
                     
-                    sync_form_with_state()
+                    keys_to_clear = ['p_name_input', 'p_desc_input', 'p_type_input', 'p_score_input', 'p_remark_input']
+                    for key in keys_to_clear:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    
                     st.rerun()
             with col_no:
                 if st.button("❌ No, Cancel", use_container_width=True):
