@@ -11,9 +11,6 @@ import streamlit.components.v1 as components
 # 브라우저 탭 아이콘 및 제목 영문 설정
 st.set_page_config(page_title="Supplier OAMI", page_icon="📝", layout="centered")
 
-# [UPDATE] 모바일에서 화면이 깨지는 문제를 해결하기 위해, 강제로 가로 배열을 만들던 CSS 코드를 삭제했습니다. 
-# 이제 모바일에서는 안전하게 세로로 버튼이 배열되며, PC에서는 가로로 넓게 배열됩니다.
-
 # 메인 타이틀
 st.title("📝 Supplier OAMI Evaluation App")
 
@@ -275,7 +272,6 @@ if st.session_state.is_evaluating:
         st.warning("⚠️ CSV downloaded. Automatic backup is now disabled for this session.")
     
     if st.session_state.process_list or st.session_state.is_inserting:
-        # 첫 번째 줄: 이동 및 신규 추가 (3개 버튼) - 모바일에서는 알아서 3줄로 나뉩니다.
         nav_c1, nav_c2, nav_c3 = st.columns(3)
         
         prev_disabled = len(st.session_state.process_list) == 0 or (st.session_state.nav_index <= 0 and not st.session_state.is_inserting)
@@ -311,11 +307,12 @@ if st.session_state.is_evaluating:
         btn_text = "Save New Process" if st.session_state.is_inserting else "Update Process"
         st.form_submit_button(btn_text, on_click=process_form_submit)
 
-    # Cancel과 Delete 버튼을 입력 폼(Save/Update 버튼) 바로 아래로 이동
+    # Cancel과 Delete 버튼
     if st.session_state.process_list or st.session_state.is_inserting:
         act_c1, act_c2 = st.columns(2)
         
-        cancel_disabled = len(st.session_state.process_list) == 0
+        # [UPDATE] Editing 모드(is_inserting == False)일 때는 Cancel 버튼이 비활성화 되도록 조건 수정
+        cancel_disabled = (not st.session_state.is_inserting) or (len(st.session_state.process_list) == 0)
         with act_c1: st.button("🚫 Cancel", on_click=nav_cancel, disabled=cancel_disabled, use_container_width=True)
         
         del_disabled = st.session_state.is_inserting
