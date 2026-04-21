@@ -54,7 +54,6 @@ def save_temp_backup():
 
 # 엑셀 다운로드 클릭 시 실행될 콜백 함수
 def handle_download():
-    # 사용자가 체크박스를 선택하여 삭제를 원할 때만 파일 삭제 로직을 수행합니다.
     if st.session_state.get("delete_backup_checkbox", True):
         st.session_state.stop_backup = True
         supplier = st.session_state.master_info.get("supplier", "")
@@ -68,9 +67,43 @@ def handle_download():
                     pass
         st.session_state.download_action_status = "deleted"
     else:
-        # 삭제하지 않는 옵션 선택 시, 백업을 유지합니다.
         st.session_state.stop_backup = False
         st.session_state.download_action_status = "kept"
+
+# 프로세스 네비게이션 콜백 함수
+def navigate_process(direction):
+    total = len(st.session_state.process_list)
+    if total == 0: return
+
+    current = st.session_state.current_edit_index
+    
+    if direction == "prev":
+        new_idx = current - 1
+        if current == -1: new_idx = total - 1
+        elif new_idx < 0: new_idx = -1
+    elif direction == "next":
+        new_idx = current + 1
+        if new_idx >= total: new_idx = -1
+    elif direction == "new":
+        new_idx = -1
+
+    st.session_state.current_edit_index = new_idx
+
+    if new_idx == -1:
+        st.session_state.p_name_input = ""
+        st.session_state.p_desc_input = ""
+        st.session_state.p_type_input = None
+        st.session_state.p_score_input = None
+        st.session_state.p_remark_input = ""
+    else:
+        p = st.session_state.process_list[new_idx]
+        st.session_state.p_name_input = p["Process"] if p["Process"] != "N/A" else ""
+        st.session_state.p_desc_input = p["Description"]
+        st.session_state.p_type_input = p["Type"]
+        st.session_state.p_score_input = p["PAMI"]
+        st.session_state.p_remark_input = p["Remark"]
+        
+    st.session_state.pami_form_error = ""
 
 # 폼 제출 프로세스 (조건부 초기화)
 def process_form_submit():
@@ -84,23 +117,36 @@ def process_form_submit():
         st.session_state.pami_form_error = "🚨 Fill in Description, Type, and Score."
     else:
         st.session_state.pami_form_error = ""
-        current_no = len(st.session_state.process_list) + 1
-        new_process = {
-            "Supplier": st.session_state.master_info["supplier"],
-            "Evaluator": st.session_state.master_info["evaluator"],
-            "No.": current_no,
-            "Process": p_name if p_name else "N/A",
-            "Type": p_type,
-            "Description": p_desc,
-            "PAMI": p_score,
-            "Remark": p_remark if p_remark else "",
-            "Time": datetime.now().strftime("%H:%M:%S")
-        }
-        st.session_state.process_list.append(new_process)
-        save_temp_backup()
-        st.session_state.success_toast = f"Added No.{current_no}"
+        idx = st.session_state.current_edit_index
         
-        # 콜백 내에서의 안전한 필드 초기화
+        if idx == -1:
+            current_no = len(st.session_state.process_list) + 1
+            new_process = {
+                "Supplier": st.session_state.master_info["supplier"],
+                "Evaluator": st.session_state.master_info["evaluator"],
+                "No.": current_no,
+                "Process": p_name if p_name else "N/A",
+                "Type": p_type,
+                "Description": p_desc,
+                "PAMI": p_score,
+                "Remark": p_remark if p_remark else "",
+                "Time": datetime.now().strftime("%H:%M:%S")
+            }
+            st.session_state.process_list.append(new_process)
+            st.session_state.success_toast = f"Added No.{current_no}"
+        else:
+            p = st.session_state.process_list[idx]
+            p["Process"] = p_name if p_name else "N/A"
+            p["Description"] = p_desc
+            p["Type"] = p_type
+            p["PAMI"] = p_score
+            p["Remark"] = p_remark if p_remark else ""
+            p["Time"] = datetime.now().strftime("%H:%M:%S")
+            st.session_state.success_toast = f"Updated No.{idx + 1}"
+            st.session_state.current_edit_index = -1 
+            
+        save_temp_backup()
+        
         st.session_state.p_name_input = ""
         st.session_state.p_desc_input = ""
         st.session_state.p_type_input = None
@@ -127,6 +173,8 @@ if 'pami_form_error' not in st.session_state:
     st.session_state.pami_form_error = ""
 if 'success_toast' not in st.session_state:
     st.session_state.success_toast = ""
+if 'current_edit_index' not in st.session_state:
+    st.session_state.current_edit_index = -1
 
 # 토스트 메시지 출력
 if st.session_state.success_toast:
@@ -156,6 +204,7 @@ with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=not st.sessi
                     st.session_state.is_evaluating = True
                     st.session_state.stop_backup = False
                     st.session_state.download_action_status = None 
+                    st.session_state.current_edit_index = -1
                     st.rerun()
         st.write("---")
     
@@ -182,7 +231,21 @@ if st.session_state.is_evaluating:
     
     if st.session_state.stop_backup:
         st.warning("⚠️ CSV downloaded. Automatic backup is now disabled for this session.")
-        
+    
+    if st.session_state.process_list:
+        nav_col1, nav_col2, nav_col3, nav_col4 = st.columns([1.2, 2.5, 1.2, 1.2])
+        with nav_col1:
+            st.button("⬅️ Prev", on_click=navigate_process, args=("prev",), use_container_width=True)
+        with nav_col2:
+            if st.session_state.current_edit_index == -1:
+                st.markdown("<div style='text-align: center; margin-top: 8px; font-weight: bold; color: #0d6efd;'>✨ Add New Process</div>", unsafe_allow_html=True)
+            else:
+                st.markdown(f"<div style='text-align: center; margin-top: 8px; font-weight: bold; color: #198754;'>✏️ Editing No.{st.session_state.current_edit_index + 1}</div>", unsafe_allow_html=True)
+        with nav_col3:
+            st.button("Next ➡️", on_click=navigate_process, args=("next",), use_container_width=True)
+        with nav_col4:
+            st.button("➕ New", on_click=navigate_process, args=("new",), use_container_width=True)
+
     with st.form("pami_input_form", clear_on_submit=False):
         st.subheader("📝 Step 2: PAMI Input per Process")
         if st.session_state.pami_form_error:
@@ -195,7 +258,9 @@ if st.session_state.is_evaluating:
         st.write("Score (1~5) - Required*")
         st.radio("Score", options=[1, 2, 3, 4, 5], index=None, horizontal=True, label_visibility="collapsed", key="p_score_input")
         st.text_input("Remark (Optional)", key="p_remark_input")
-        st.form_submit_button("Add to List", on_click=process_form_submit)
+        
+        btn_text = "Update Process" if st.session_state.current_edit_index != -1 else "Add to List"
+        st.form_submit_button(btn_text, on_click=process_form_submit)
 
     # 4. Evaluation Summary & Export
     if st.session_state.process_list:
@@ -215,16 +280,17 @@ if st.session_state.is_evaluating:
         with m_col2:
             st.metric(label="Total OAMI Average", value=f"{oami_avg:.2f} / 5.0")
         
+        # [UPDATE] 메일 본문 자동 입력을 위해 raw_text 생성 로직을 탭 위로 끌어올렸습니다.
+        raw_text = f"Supplier: {st.session_state.master_info['supplier']} | Evaluator: {st.session_state.master_info['evaluator']} | Processes: {total_processes} | Avg OAMI: {oami_avg:.2f}\n"
+        raw_text += "No.|Process|Type|PAMI|Description|Remark|Time\n"
+        for _, row in df.iterrows():
+            raw_text += f"{row['No.']}|{row['Process']}|{row['Type']}|{row['PAMI']}|{row['Description']}|{row['Remark']}|{row['Time']}\n"
+        
         tab_mobile, tab_pc = st.tabs(["📱 1. Mobile (Text)", "🖥️ 2. PC (Table)"])
         
         with tab_mobile:
-            st.info("💡 **Tip:** Click the copy button below and paste it into your Outlook Mail App. If the button fails, use the small copy icon inside the text box.")
+            st.info("💡 **Tip:** Click the button below to copy the text, or use the 'Open Outlook Mail App' button to auto-fill your email body.")
             
-            raw_text = f"Supplier: {st.session_state.master_info['supplier']} | Evaluator: {st.session_state.master_info['evaluator']} | Processes: {total_processes} | Avg OAMI: {oami_avg:.2f}\n"
-            raw_text += "No.|Process|Type|PAMI|Description|Remark|Time\n"
-            for _, row in df.iterrows():
-                raw_text += f"{row['No.']}|{row['Process']}|{row['Type']}|{row['PAMI']}|{row['Description']}|{row['Remark']}|{row['Time']}\n"
-
             safe_raw_text = json.dumps(raw_text)
             
             copy_text_html = f"""
@@ -279,7 +345,7 @@ if st.session_state.is_evaluating:
             st.code(raw_text, language="text")
 
         with tab_pc:
-            st.info("💡 Wide and clean table copy optimized for PC environments.")
+            st.info("💡 Wide and clean table copy optimized for PC environments. **Note:** Tables cannot be auto-filled in the Mail App. You must copy and paste this table manually.")
             html_table = df.to_html(index=False).replace('<table border="1" class="dataframe">', '<table border="1" cellpadding="8" style="border-collapse: collapse; text-align: left; font-family: Arial; width: 100%;">')
             email_html = f"<div id='pc-email-content' style='background:#f8f9fa; padding:15px;'><h3 style='margin-top:0;'>OAMI Report: {st.session_state.master_info['supplier']}</h3><p><strong>Total Processes:</strong> {total_processes}</p><p><strong>Average OAMI: <span style='color:blue;'>{oami_avg:.2f} / 5.0</span></strong></p>{html_table}</div>"
             
@@ -314,9 +380,11 @@ if st.session_state.is_evaluating:
 
         st.write("")
         
+        # [UPDATE] 메일 앱 링크에 URL 인코딩된 본문(body) 데이터를 추가했습니다.
         subject = f"OAMI Evaluation - {st.session_state.master_info['supplier']} OAMI - {oami_avg:.2f}"
-        mail_link = f"mailto:?subject={urllib.parse.quote(subject)}"
-        st.markdown(f'<a href="{mail_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:45px; border-radius:5px; border:none; cursor:pointer; background-color:#0078D4; color:white; font-weight:bold; font-size:16px;">📨 Open Outlook Mail App</button></a>', unsafe_allow_html=True)
+        body_encoded = urllib.parse.quote(raw_text)
+        mail_link = f"mailto:?subject={urllib.parse.quote(subject)}&body={body_encoded}"
+        st.markdown(f'<a href="{mail_link}" target="_blank" style="text-decoration:none;"><button style="width:100%; height:45px; border-radius:5px; border:none; cursor:pointer; background-color:#0078D4; color:white; font-weight:bold; font-size:16px;">📨 Open Outlook Mail App (Auto-fill Text)</button></a>', unsafe_allow_html=True)
 
         st.write("---")
         
@@ -361,8 +429,8 @@ if st.session_state.is_evaluating:
                     st.session_state.stop_backup = False
                     st.session_state.download_action_status = None 
                     st.session_state.show_confirm_clear = False 
+                    st.session_state.current_edit_index = -1 
                     
-                    # [UPDATE] 에러 수정: 위젯 상태에 ""를 할당하지 않고, del을 사용하여 완전히 삭제합니다.
                     keys_to_clear = ['p_name_input', 'p_desc_input', 'p_type_input', 'p_score_input', 'p_remark_input']
                     for key in keys_to_clear:
                         if key in st.session_state:
