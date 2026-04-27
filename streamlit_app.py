@@ -7,6 +7,7 @@ import os
 import glob 
 import time 
 import streamlit.components.v1 as components
+import io # [NEW] 엑셀 템플릿 생성을 위한 in-memory 바이너리 스트림 처리를 위해 추가
 
 # 브라우저 탭 아이콘 및 제목 영문 설정
 st.set_page_config(page_title="Supplier OAMI", page_icon="📝", layout="centered")
@@ -280,6 +281,90 @@ if st.session_state.is_evaluating:
     
     if st.session_state.stop_backup:
         st.warning("⚠️ CSV downloaded. Automatic backup is now disabled for this session.")
+
+    # =====================================================================
+    # [NEW] 엑셀 템플릿 기반 일괄 업로드(Bulk Upload) 기능 추가
+    # 엑셀 다운로드로 양식을 받고, 작성 후 업로드하면 일괄 등록되도록 구현
+    # =====================================================================
+    with st.expander("📂 Bulk Upload via Excel", expanded=False):
+        st.markdown("**엑셀 템플릿을 사용하여 여러 프로세스를 한 번에 등록할 수 있습니다.**")
+        
+        # 1) 다운로드할 엑셀 템플릿 데이터프레임 생성
+        template_df = pd.DataFrame({
+            "Process Name": ["Assembly 1", "Testing"],
+            "Description": ["Engine assembly", "Final check"],
+            "Type": ["MH", "P"], # MH, P, WIP 중 선택
+            "Score": [4, 5],     # 1 ~ 5 사이 정수
+            "Remark": ["Routine check", "Critical step"]
+        })
+        
+        # in-memory 버퍼에 엑셀 파일 작성
+        towrite = io.BytesIO()
+        template_df.to_excel(towrite, index=False, engine='openpyxl')
+        towrite.seek(0)
+        
+        st.download_button(
+            label="📥 Download Excel Template",
+            data=towrite,
+            file_name="OAMI_Bulk_Template.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            help="양식을 다운로드하여 내용을 채운 뒤 아래에 업로드하세요."
+        )
+        
+        # 2) 엑셀 파일 업로더
+        uploaded_file = st.file_uploader("Upload filled Excel template", type=["xlsx", "xls"])
+        
+        # 3) 업로드 후 데이터 반영 로직
+        if uploaded_file is not None:
+            if st.button("🚀 Upload & Apply Data"):
+                try:
+                    df_uploaded = pd.read_excel(uploaded_file)
+                    # 필수 컬럼 검증
+                    required_cols = ["Description", "Type", "Score"]
+                    if not all(col in df_uploaded.columns for col in required_cols):
+                        st.error(f"🚨 엑셀 양식이 올바르지 않습니다. 다음 컬럼이 반드시 필요합니다: {', '.join(required_cols)}")
+                    else:
+                        # 엑셀의 각 행을 순회하며 프로세스 리스트에 추가
+                        added_count = 0
+                        for _, row in df_uploaded.iterrows():
+                            # 빈 값이거나 누락된 필수 값 처리
+                            desc = row.get("Description")
+                            if pd.isna(desc) or str(desc).strip() == "":
+                                continue # Description이 비어있으면 해당 행 스킵
+                            
+                            new_process = {
+                                "Supplier": st.session_state.master_info["supplier"],
+                                "Evaluator": st.session_state.master_info["evaluator"],
+                                "No.": 0, 
+                                "Process": str(row.get("Process Name", "N/A")) if pd.notna(row.get("Process Name")) else "N/A",
+                                "Type": str(row.get("Type", "MH")) if pd.notna(row.get("Type")) else "MH",
+                                "Description": str(desc),
+                                "PAMI": int(row.get("Score", 3)) if pd.notna(row.get("Score")) else 3,
+                                "Remark": str(row.get("Remark", "")) if pd.notna(row.get("Remark")) else "",
+                                "Time": datetime.now().strftime("%H:%M:%S")
+                            }
+                            st.session_state.process_list.append(new_process)
+                            added_count += 1
+                        
+                        if added_count > 0:
+                            # 새 데이터가 추가되었으므로 인덱스 재정렬 및 백업 저장
+                            reindex_processes()
+                            save_temp_backup()
+                            
+                            # 네비게이션을 가장 마지막 위치로 리셋
+                            st.session_state.is_inserting = True
+                            st.session_state.nav_index = len(st.session_state.process_list) - 1
+                            sync_form_with_state()
+                            
+                            st.success(f"✅ {added_count}개의 프로세스가 성공적으로 일괄 등록되었습니다!")
+                            time.sleep(1) # 성공 메시지 확인을 위한 짧은 대기 후 새로고침
+                            st.rerun()
+                        else:
+                            st.warning("⚠️ 등록할 유효한 프로세스 데이터가 엑셀에 없습니다.")
+                except Exception as e:
+                    st.error(f"🚨 파일을 읽는 중 오류가 발생했습니다: {e}")
+    st.write("---")
+    # =====================================================================
     
     if st.session_state.process_list or st.session_state.is_inserting:
         nav_c1, nav_c2, nav_c3 = st.columns(3)
