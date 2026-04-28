@@ -439,10 +439,11 @@ if st.session_state.is_evaluating:
         with m_col2:
             st.metric(label="Total OAMI Average", value=f"{oami_avg:.2f} / 5.0")
         
+        # [UPDATE] 텍스트 모바일 복사 영역에 순서를 변경 (Description이 PAMI 앞으로 오도록)
         raw_text = f"Supplier: {st.session_state.master_info['supplier']} | Evaluator: {st.session_state.master_info['evaluator']} | Processes: {total_processes} | Avg OAMI: {oami_avg:.2f}\n"
-        raw_text += "No.|Process|Type|PAMI|Description|Remark|Time\n"
+        raw_text += "No.|Process|Type|Description|PAMI|Remark|Time\n"
         for _, row in df.iterrows():
-            raw_text += f"{row['No.']}|{row['Process']}|{row['Type']}|{row['PAMI']}|{row['Description']}|{row['Remark']}|{row['Time']}\n"
+            raw_text += f"{row['No.']}|{row['Process']}|{row['Type']}|{row['Description']}|{row['PAMI']}|{row['Remark']}|{row['Time']}\n"
         
         tab_mobile, tab_pc = st.tabs(["📱 1. Mobile (Text)", "🖥️ 2. PC (Table)"])
         
@@ -505,7 +506,10 @@ if st.session_state.is_evaluating:
 
         with tab_pc:
             st.info("💡 Wide and clean table copy optimized for PC environments. **Note:** Tables cannot be auto-filled in the Mail App. You must copy and paste this table manually.")
-            html_table = df.to_html(index=False).replace('<table border="1" class="dataframe">', '<table border="1" cellpadding="8" style="border-collapse: collapse; text-align: left; font-family: Arial; width: 100%;">')
+            
+            # [UPDATE] PC용 표도 Description과 PAMI 순서를 반영하도록 Dataframe 재생성 적용
+            export_cols = ["No.", "Process", "Type", "Description", "PAMI", "Remark", "Time"]
+            html_table = df[export_cols].to_html(index=False).replace('<table border="1" class="dataframe">', '<table border="1" cellpadding="8" style="border-collapse: collapse; text-align: left; font-family: Arial; width: 100%;">')
             
             # [UPDATE] 큰 헤더 사이즈 <h3> 대신 굵은 글씨로 통일했습니다.
             email_html = f"<div id='pc-email-content' style='background:#f8f9fa; padding:15px;'><strong>OAMI Report: {st.session_state.master_info['supplier']}</strong><br><br><strong>Total Processes:</strong> {total_processes}<br><strong>Average OAMI: <span style='color:blue;'>{oami_avg:.2f} / 5.0</span></strong><br><br>{html_table}</div>"
@@ -553,10 +557,17 @@ if st.session_state.is_evaluating:
         
         st.checkbox("🗑️ Delete system backup file after download (Recommended for security)", value=True, key="delete_backup_checkbox")
         
-        csv_data = df.to_csv(index=False, encoding='utf-8-sig')
+        # [UPDATE] CSV 파일 생성 시 첫 줄에 요약 텍스트 추가 및 컬럼 순서를 Description 뒤에 PAMI가 오도록 수정
+        summary_text_for_csv = f"Supplier: {st.session_state.master_info['supplier']} | Evaluator: {st.session_state.master_info['evaluator']} | Processes: {total_processes} | Avg OAMI: {oami_avg:.2f}\n"
+        export_df = df[["No.", "Process", "Type", "Description", "PAMI", "Remark", "Time"]]
+        
+        # 요약 문자열과 csv 문자열을 결합 후 한글 깨짐 방지를 위해 utf-8-sig 인코딩
+        csv_string = summary_text_for_csv + export_df.to_csv(index=False)
+        csv_data_bytes = csv_string.encode('utf-8-sig')
+
         st.download_button(
             label="📥 Download CSV Backup", 
-            data=csv_data, 
+            data=csv_data_bytes, 
             file_name=f"OAMI_{st.session_state.master_info['supplier']}_{datetime.now().strftime('%Y%m%d')}.csv", 
             mime="text/csv", 
             use_container_width=True,
