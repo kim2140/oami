@@ -41,3 +41,4 @@ jobs:
         # 정상적으로 Actions가 인식합니다. 기존 주석과 로직은 변경 없이 모두 추가/유지되었습니다.
         run: |
           curl -s -o /dev/null -w "%{http_code}\n" https://kim2140-oami.streamlit.app/
+          
