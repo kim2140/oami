@@ -32,14 +32,22 @@ st.set_page_config(page_title="Supplier OAMI", page_icon="📝", layout="centere
 
 # 메인 타이틀
 st.markdown("### 📝 Supplier OAMI Evaluation App")
-# --- 기존 디버깅 코드 지우고 이걸로 바꿔보세요 ---
+# --- 궁극의 디버깅 코드 ---
+file_path = ".streamlit/secrets.toml"
 if not HAS_GOOGLE_LIBS:
-    st.error("🚨 원인 파악 완료: '구글 라이브러리'가 설치되지 않았습니다!")
-elif "google_drive" not in st.secrets:
-    st.error("🚨 원인 파악 완료: '.streamlit/secrets.toml' 파일을 찾을 수 없습니다!")
+    st.error("🚨 구글 라이브러리 미설치")
+elif not os.path.exists(file_path):
+    st.error(f"🚨 파일 찾기 실패! 현재 앱이 찾고 있는 위치: {os.path.abspath(file_path)}")
 else:
-    st.success("✅ 구글 드라이브 연동 준비 완료!")
-# ---------------------------------------------------
+    try:
+        # 파일은 찾았으나 내부 데이터 검사
+        if "google_drive" not in st.secrets:
+            st.error("🚨 파일은 찾았지만 `[google_drive]` 항목을 읽지 못했습니다! 파일 내용에 오타나 따옴표 에러가 있습니다.")
+        else:
+            st.success("✅ 구글 드라이브 연동 준비 완료! 완벽합니다!")
+    except Exception as e:
+        st.error(f"🚨 파일 내용 오류 (TOML 문법 에러): {e}")
+# ----------------------------
 
 # 백업 전용 폴더 설정
 BACKUP_DIR = "oami_backups"
