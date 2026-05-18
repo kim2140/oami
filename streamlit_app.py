@@ -35,23 +35,22 @@ BACKUP_DIR = "oami_backups"
 if not os.path.exists(BACKUP_DIR):
     os.makedirs(BACKUP_DIR)
 
-# Bulk Upload 유효값 상수
+# 유효값 상수
 VALID_TYPES = {"MH", "P", "WIP"}
 VALID_SCORES = {1, 2, 3, 4, 5}
 
+# [UPDATE] 백업 보관 기간: 14일 (2주)
+BACKUP_RETENTION_DAYS = 14
+
 # =====================================================================
 # Google Sheets 헬퍼 함수
-# 기존 Google Drive 파일 방식 → Google Sheets 셀 저장 방식으로 전환
-# 시트 구조: A열=filename, B열=json_data, C열=last_updated
 # =====================================================================
 def get_sheets_service():
-    """구글 서비스 계정 인증 후 Sheets 서비스 객체와 sheet_id를 반환합니다."""
     if not HAS_GOOGLE_LIBS or "google_drive" not in st.secrets:
         return None, None
     try:
         credentials_info = dict(st.secrets["google_drive"])
         sheet_id = credentials_info.pop("sheet_id", None)
-        # 기존 folder_id가 남아있을 수 있으므로 제거
         credentials_info.pop("folder_id", None)
 
         if "private_key" in credentials_info:
@@ -61,9 +60,7 @@ def get_sheets_service():
 
         creds = service_account.Credentials.from_service_account_info(
             credentials_info,
-            scopes=[
-                "https://www.googleapis.com/auth/spreadsheets"
-            ]
+            scopes=["https://www.googleapis.com/auth/spreadsheets"]
         )
         service = build("sheets", "v4", credentials=creds)
         return service, sheet_id
@@ -73,11 +70,10 @@ def get_sheets_service():
 
 
 def _get_all_rows(service, sheet_id):
-    """시트의 모든 행을 가져옵니다. 반환: [[filename, json_data, last_updated], ...]"""
     try:
         result = service.spreadsheets().values().get(
             spreadsheetId=sheet_id,
-            range="Sheet1!A:C"
+            range="A:C"
         ).execute()
         return result.get("values", [])
     except Exception as e:
@@ -86,16 +82,14 @@ def _get_all_rows(service, sheet_id):
 
 
 def _find_row_index(rows, filename):
-    """filename이 일치하는 행의 인덱스를 반환 (1-based, 시트 행번호). 없으면 -1."""
     base_name = os.path.basename(filename)
     for i, row in enumerate(rows):
         if len(row) > 0 and row[0] == base_name:
-            return i + 1  # 시트는 1-based
+            return i + 1
     return -1
 
 
 def upload_or_update_gsheet(filename, content_dict):
-    """Google Sheets에 백업 데이터를 저장(업서트)합니다."""
     service, sheet_id = get_sheets_service()
     if not service or not sheet_id:
         return False
@@ -107,22 +101,19 @@ def upload_or_update_gsheet(filename, content_dict):
     try:
         rows = _get_all_rows(service, sheet_id)
         row_idx = _find_row_index(rows, filename)
-
         new_row = [[base_name, json_data, timestamp]]
 
         if row_idx > 0:
-            # 기존 행 업데이트
             service.spreadsheets().values().update(
                 spreadsheetId=sheet_id,
-                range=f"Sheet1!A{row_idx}:C{row_idx}",
+                range=f"A{row_idx}:C{row_idx}",
                 valueInputOption="RAW",
                 body={"values": new_row}
             ).execute()
         else:
-            # 새 행 추가
             service.spreadsheets().values().append(
                 spreadsheetId=sheet_id,
-                range="Sheet1!A:C",
+                range="A:C",
                 valueInputOption="RAW",
                 insertDataOption="INSERT_ROWS",
                 body={"values": new_row}
@@ -134,19 +125,16 @@ def upload_or_update_gsheet(filename, content_dict):
 
 
 def delete_gsheet_row_if_exists(filename):
-    """Google Sheets에서 해당 백업 행을 삭제합니다."""
     service, sheet_id = get_sheets_service()
     if not service or not sheet_id:
         return False
-
     try:
         rows = _get_all_rows(service, sheet_id)
         row_idx = _find_row_index(rows, filename)
         if row_idx > 0:
-            # 행 내용을 비워서 삭제 처리
             service.spreadsheets().values().update(
                 spreadsheetId=sheet_id,
-                range=f"Sheet1!A{row_idx}:C{row_idx}",
+                range=f"A{row_idx}:C{row_idx}",
                 valueInputOption="RAW",
                 body={"values": [["", "", ""]]}
             ).execute()
@@ -157,7 +145,6 @@ def delete_gsheet_row_if_exists(filename):
 
 
 def get_gsheet_backup_list():
-    """Google Sheets에 저장된 백업 목록을 로드합니다."""
     service, sheet_id = get_sheets_service()
     options = {}
     if not service or not sheet_id:
@@ -196,14 +183,16 @@ def cleanup_old_backups():
     now = time.time()
     for f in glob.glob(os.path.join(BACKUP_DIR, "*.json")):
         try:
-            if os.stat(f).st_mtime < now - (3 * 86400):
+            if os.stat(f).st_mtime < now - (BACKUP_RETENTION_DAYS * 86400):
                 os.remove(f)
         except Exception as e:
             logger.warning(f"백업 파일 정리 실패 ({f}): {e}")
     st.session_state._cleanup_done = True
 
 
-# 실시간 자동 백업 함수
+# =====================================================================
+# 실시간 자동 백업 - 클라우드 우선, 실패 시에만 로컬
+# =====================================================================
 def save_temp_backup():
     if st.session_state.get("stop_backup", False):
         return
@@ -219,20 +208,16 @@ def save_temp_backup():
     }
     fname = get_backup_filename(supplier, evaluator)
 
-    # Google Sheets 백업 시도
     uploaded = upload_or_update_gsheet(fname, backup_data)
-    if not uploaded and HAS_GOOGLE_LIBS and "google_drive" in st.secrets:
-        st.session_state._gdrive_warning = True
-
-    # 로컬 서버 보존용 백업
-    try:
-        with open(fname, "w", encoding="utf-8") as f:
-            json.dump(backup_data, f, ensure_ascii=False, indent=4)
-    except Exception as e:
-        logger.error(f"로컬 백업 저장 실패: {e}")
+    if not uploaded:
+        try:
+            with open(fname, "w", encoding="utf-8") as f:
+                json.dump(backup_data, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            logger.error(f"로컬 백업 저장 실패: {e}")
 
 
-# 엑셀 다운로드 콜백 함수
+# 다운로드 콜백
 def handle_download():
     if st.session_state.get("delete_backup_checkbox", True):
         st.session_state.stop_backup = True
@@ -252,14 +237,13 @@ def handle_download():
         st.session_state.download_action_status = "kept"
 
 
-# 프로세스 리스트 재정렬 함수
 def reindex_processes():
     for i, p in enumerate(st.session_state.process_list):
         p["No."] = i + 1
 
 
 # =====================================================================
-# 폼 네비게이션 및 상태 동기화 로직
+# 폼 네비게이션 및 상태 동기화
 # =====================================================================
 def sync_form_with_state():
     if st.session_state.is_inserting:
@@ -291,20 +275,39 @@ def sync_form_with_state():
     st.session_state.pami_form_error = ""
 
 
+# =====================================================================
+# [UPDATE] 순환 네비게이션
+# Prev: 첫 번째에서 누르면 → 마지막으로
+# Next: 마지막에서 누르면 → 첫 번째로
+# =====================================================================
 def nav_prev():
-    if st.session_state.is_inserting and st.session_state.nav_index >= 0:
+    plist = st.session_state.process_list
+    if len(plist) == 0:
+        return
+
+    if st.session_state.is_inserting:
         st.session_state.is_inserting = False
-    elif not st.session_state.is_inserting and st.session_state.nav_index > 0:
+    elif st.session_state.nav_index > 0:
         st.session_state.nav_index -= 1
+    else:
+        # 첫 번째 → 마지막으로 순환
+        st.session_state.nav_index = len(plist) - 1
     sync_form_with_state()
 
 
 def nav_next():
-    if not st.session_state.is_inserting:
-        if st.session_state.nav_index < len(st.session_state.process_list) - 1:
-            st.session_state.nav_index += 1
-        else:
-            st.session_state.is_inserting = True
+    plist = st.session_state.process_list
+    if len(plist) == 0:
+        return
+
+    if st.session_state.is_inserting:
+        return
+
+    if st.session_state.nav_index < len(plist) - 1:
+        st.session_state.nav_index += 1
+    else:
+        # 마지막 → 첫 번째로 순환
+        st.session_state.nav_index = 0
     sync_form_with_state()
 
 
@@ -401,7 +404,7 @@ def process_form_submit():
     sync_form_with_state()
 
 
-# 앱 구동 시 백업 청소 (세션당 1회)
+# 백업 청소 (세션당 1회)
 cleanup_old_backups()
 
 # =====================================================================
@@ -435,11 +438,6 @@ if st.session_state.success_toast:
     st.toast(st.session_state.success_toast)
     st.session_state.success_toast = ""
 
-# Google Sheets 경고 표시
-if st.session_state.get("_gdrive_warning", False):
-    st.warning("⚠️ Google Sheets 클라우드 백업에 실패했습니다. 로컬 백업만 저장되었습니다.")
-    st.session_state._gdrive_warning = False
-
 # =====================================================================
 # Step 1: Supplier & Evaluator Info
 # =====================================================================
@@ -451,7 +449,7 @@ with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=not st.sessi
 
     backup_files = glob.glob(os.path.join(BACKUP_DIR, "*.json"))
     if (backup_files or backup_options) and not st.session_state.is_evaluating:
-        st.markdown("**Check Backup History (Past 3 Days)**")
+        st.markdown(f"**Check Backup History (Past {BACKUP_RETENTION_DAYS} Days)**")
         for bf in backup_files:
             try:
                 with open(bf, "r", encoding="utf-8") as f:
@@ -624,19 +622,16 @@ if st.session_state.is_evaluating:
     st.write("---")
 
     # =====================================================================
-    # 네비게이션 버튼
+    # [UPDATE] 네비게이션 버튼 - 순환 방식
     # =====================================================================
     if st.session_state.process_list or st.session_state.is_inserting:
         nav_c1, nav_c2, nav_c3 = st.columns(3)
 
-        prev_disabled = (
-            len(st.session_state.process_list) == 0
-            or (st.session_state.nav_index <= 0 and not st.session_state.is_inserting)
-        )
+        prev_disabled = len(st.session_state.process_list) == 0
         with nav_c1:
             st.button("⬅️ Prev", on_click=nav_prev, disabled=prev_disabled, use_container_width=True)
 
-        next_disabled = st.session_state.is_inserting
+        next_disabled = st.session_state.is_inserting or len(st.session_state.process_list) == 0
         with nav_c2:
             st.button("Next ➡️", on_click=nav_next, disabled=next_disabled, use_container_width=True)
 
@@ -654,10 +649,12 @@ if st.session_state.is_evaluating:
                 unsafe_allow_html=True
             )
         else:
+            total = len(st.session_state.process_list)
+            current_num = st.session_state.nav_index + 1
             current_desc = st.session_state.process_list[st.session_state.nav_index].get('Description', '')
             st.markdown(
                 f"<div style='text-align: center; font-weight: bold; color: #198754;'>"
-                f"✏️ Editing No. {st.session_state.nav_index + 1} : {current_desc}</div>",
+                f"✏️ Editing No. {current_num} / {total} : {current_desc}</div>",
                 unsafe_allow_html=True
             )
 
@@ -753,7 +750,6 @@ if st.session_state.is_evaluating:
 
             safe_raw_text = json.dumps(raw_text)
 
-            # [FIX] st.html로 교체 (components.html 지원 종료 대응)
             copy_text_html = f"""
             <button id="btn-copy-text" onclick="copyToClipboard()" style="width: 100%; height: 40px; background-color: #0d6efd; color: white; border: none; border-radius: 5px; font-weight: bold; font-size: 14px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                 📋 Copy Text for Outlook
@@ -802,7 +798,6 @@ if st.session_state.is_evaluating:
             </script>
             """
             st.html(copy_text_html)
-
             st.code(raw_text, language="text")
 
         with tab_pc:
@@ -826,7 +821,6 @@ if st.session_state.is_evaluating:
                 f"<br><br>{html_table}</div>"
             )
 
-            # [FIX] st.html로 교체 + CSS로 높이/스크롤 제어
             copy_table_html = f"""
             <button id="btn-copy-table" onclick='copyPCTable()' style='width:100%; height:40px; background-color:#28a745; color:white; border:none; border-radius:5px; font-weight:bold; font-size:14px; cursor:pointer; margin-bottom:10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
                 📋 Copy Table for Outlook
@@ -891,7 +885,6 @@ if st.session_state.is_evaluating:
             key="delete_backup_checkbox"
         )
 
-        # CSV 파일 형식 - 요약 행을 # 주석 처리
         summary_line = (
             f"# Supplier: {st.session_state.master_info['supplier']} | "
             f"Evaluator: {st.session_state.master_info['evaluator']} | "
