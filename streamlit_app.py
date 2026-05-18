@@ -32,6 +32,12 @@ st.set_page_config(page_title="Supplier OAMI", page_icon="📝", layout="centere
 
 # 메인 타이틀
 st.markdown("### 📝 Supplier OAMI Evaluation App")
+# --- 이 아래 4줄을 추가해 보세요 ---
+if HAS_GOOGLE_LIBS and "google_drive" in st.secrets:
+    st.success("✅ 구글 드라이브 연동 준비 완료! (이제 Save를 누르면 드라이브에 저장됩니다)")
+else:
+    st.error("🚨 구글 드라이브 연결 실패: secrets.toml 파일을 찾을 수 없거나 라이브러리가 설치되지 않았습니다.")
+# -----------------------------------
 
 # 백업 전용 폴더 설정
 BACKUP_DIR = "oami_backups"
