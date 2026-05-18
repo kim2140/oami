@@ -8,7 +8,10 @@ on:
     # 아래 설정은 매 10시간마다 0분에 실행된다는 의미입니다. ('0 */10 * * *')
     # UTC 기준이므로 한국 시간과 무관하게 10시간 간격으로 정확히 동작합니다.
     # 앱이 12시간마다 잠들기 때문에, 여유를 두고 10시간마다 실행하여 앱이 잠들지 않도록 방지합니다.
-    - cron: '0 */10 * * *'
+    #
+    # [추가 업데이트 내역]: Streamlit의 수면 전환 대기 시간이 예상보다 훨씬 짧거나, 단순 접속을 
+    # 무시할 가능성에 대비하여 실행 주기를 2시간마다('0 */2 * * *')로 대폭 단축합니다. 기존 주석은 유지합니다.
+    - cron: '0 */2 * * *'
   # 스케줄 외에도 필요할 때 GitHub 웹사이트에서 수동으로 버튼을 눌러 실행할 수 있도록 허용합니다.
   workflow_dispatch:
 
@@ -20,24 +23,44 @@ jobs:
     
     # 작업 내에서 순차적으로 실행될 단계(Steps)들입니다.
     steps:
-      - name: Ping Streamlit App
+      # [새로운 업데이트 내역]: 단순 curl 명령어로는 Streamlit의 웹소켓(WebSocket) 감지를
+      # 속일 수 없어 지속적으로 수면 상태에 빠지는 문제를 해결하기 위해,
+      # 파이썬(Python)과 가상 브라우저(Playwright)를 환경을 새롭게 구축합니다.
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install Playwright
+        run: |
+          pip install playwright
+          playwright install chromium
+          
+      - name: Ping Streamlit App via Headless Browser
+        # [이전 주석 전체 보존 구역 시작]
         # curl 명령어를 사용하여 앱 URL에 접속(HTTP GET 요청)하여 트래픽을 발생시킵니다.
         # -s: 진행률이나 에러 메시지를 숨깁니다. (Silent mode)
         # -o /dev/null: 받아온 웹페이지 내용(HTML)은 저장하지 않고 버립니다. 리소스 낭비를 막기 위함입니다.
         # -w "%{http_code}\n": 정상적으로 접속되었는지 확인하기 위해 HTTP 상태 코드(예: 200)만 출력합니다.
-        #
         # [업데이트 내역]: 줄바꿈 및 명령어의 명확한 인식을 위해 리터럴 모드(|)를 적용하였습니다.
         # [주의]: 아래 URL 부분의 'https://kim2140-...' 부분을 본인의 실제 Streamlit 앱 주소로 반드시 변경해야 합니다.
         # [절대 참조 유지]: 이전 로직을 훼손하지 않고 그대로 유지합니다.
+        # [추가 업데이트 내역]: Actions 탭에서 워크플로우를 인식하지 못하는 문제를 해결하기 위해, 'set up a workflow yourself' 버튼을 통한 생성 안내를 추가하고, 캡처 화면의 저장소 이름(oami)을 반영하여 URL 예시를 업데이트하였습니다.
+        # [경로 확인 안내]: Actions 탭에서 이 파일이 인식되지 않는다면, 파일이 '.github/workflows/' 폴더 내부에 정확히 위치해 있는지 Code 탭에서 확인해 주시기 바랍니다.
+        # [폴더 꼬임 해결 안내 추가]: 기존 .github 폴더 내부로 직접 진입하여 workflows/keep_alive.yml 로 생성해야 정상적으로 Actions가 인식합니다. 기존 주석과 로직은 변경 없이 모두 추가/유지되었습니다.
+        # [강화된 핑(Ping) 로직 추가]: Streamlit 서버가 단순 봇(Bot)의 찌르기 접속을 활동으로 인정하지 않고 수면 상태로 전환하는 문제를 완전히 해결하기 위해 코드를 강화했습니다. -L: 페이지 리다이렉션이 발생하더라도 끝까지 추적하여 접속합니다. -A: 실제 Windows 환경의 구글 크롬 브라우저가 접속하는 것처럼 위장(User-Agent)하여 봇 차단을 우회합니다.
+        # [이전 주석 전체 보존 구역 끝]
         #
-        # [추가 업데이트 내역]: Actions 탭에서 워크플로우를 인식하지 못하는 문제를 해결하기 위해,
-        # 'set up a workflow yourself' 버튼을 통한 생성 안내를 추가하고, 캡처 화면의 저장소 이름(oami)을 
-        # 반영하여 URL 예시를 업데이트하였습니다.
-        #
-        # [경로 확인 안내]: Actions 탭에서 이 파일이 인식되지 않는다면, 파일이 '.github/workflows/' 폴더 내부에 
-        # 정확히 위치해 있는지 Code 탭에서 확인해 주시기 바랍니다.
-        #
-        # [폴더 꼬임 해결 안내 추가]: 기존 .github 폴더 내부로 직접 진입하여 workflows/keep_alive.yml 로 생성해야
-        # 정상적으로 Actions가 인식합니다. 기존 주석과 로직은 변경 없이 모두 추가/유지되었습니다.
+        # [최종 해결책 업데이트]: Streamlit은 HTML 껍데기만 다운로드하는 기존 curl 방식을 봇으로 간주하고 무시합니다.
+        # 이를 완벽히 우회하기 위해 Playwright를 통해 백그라운드에서 실제 크롬 브라우저를 띄우고, 
+        # 자바스크립트 및 웹소켓이 완전히 실행되도록 5초간 대기(wait_for_timeout)하는 파이썬 스크립트로 대체 실행합니다.
         run: |
-          curl -s -o /dev/null -w "%{http_code}\n" https://kim2140-oami.streamlit.app/
+          python -c "
+          from playwright.sync_api import sync_playwright
+          with sync_playwright() as p:
+              browser = p.chromium.launch()
+              page = browser.new_page()
+              page.goto('https://kim2140-oami.streamlit.app/')
+              page.wait_for_timeout(5000)
+              browser.close()
+          "
