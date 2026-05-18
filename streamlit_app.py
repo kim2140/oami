@@ -7,170 +7,179 @@ import os
 import glob
 import time
 import logging
-import streamlit.components.v1 as components
 import io
 
 # =====================================================================
-# 로깅 설정 (bare except 대신 에러를 기록하도록 개선)
+# 로깅 설정
 # =====================================================================
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
 # =====================================================================
-# [NEW] 구글 드라이브 API 연동을 위한 라이브러리 임포트
+# 구글 API 라이브러리 임포트
 # =====================================================================
 try:
     from google.oauth2 import service_account
     from googleapiclient.discovery import build
-    from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
     HAS_GOOGLE_LIBS = True
 except ImportError:
     HAS_GOOGLE_LIBS = False
 
-# 브라우저 탭 아이콘 및 제목 영문 설정
+# 브라우저 탭 아이콘 및 제목
 st.set_page_config(page_title="Supplier OAMI", page_icon="📝", layout="centered")
 
-# 메인 타이틀
 st.markdown("### 📝 Supplier OAMI Evaluation App")
-# --- 궁극의 디버깅 코드 ---
-file_path = ".streamlit/secrets.toml"
-if not HAS_GOOGLE_LIBS:
-    st.error("🚨 구글 라이브러리 미설치")
-elif not os.path.exists(file_path):
-    st.error(f"🚨 파일 찾기 실패! 현재 앱이 찾고 있는 위치: {os.path.abspath(file_path)}")
-else:
-    try:
-        # 파일은 찾았으나 내부 데이터 검사
-        if "google_drive" not in st.secrets:
-            st.error("🚨 파일은 찾았지만 `[google_drive]` 항목을 읽지 못했습니다! 파일 내용에 오타나 따옴표 에러가 있습니다.")
-        else:
-            st.success("✅ 구글 드라이브 연동 준비 완료! 완벽합니다!")
-    except Exception as e:
-        st.error(f"🚨 파일 내용 오류 (TOML 문법 에러): {e}")
-# ----------------------------
 
 # 백업 전용 폴더 설정
 BACKUP_DIR = "oami_backups"
 if not os.path.exists(BACKUP_DIR):
     os.makedirs(BACKUP_DIR)
 
-# =====================================================================
-# [FIX] Bulk Upload 시 사용할 유효값 상수 정의
-# =====================================================================
+# Bulk Upload 유효값 상수
 VALID_TYPES = {"MH", "P", "WIP"}
 VALID_SCORES = {1, 2, 3, 4, 5}
 
 # =====================================================================
-# 구글 드라이브 헬퍼 함수 정의
+# Google Sheets 헬퍼 함수
+# 기존 Google Drive 파일 방식 → Google Sheets 셀 저장 방식으로 전환
+# 시트 구조: A열=filename, B열=json_data, C열=last_updated
 # =====================================================================
-def get_gdrive_service():
-    """구글 서비스 계정 인증을 통해 드라이브 서비스 객체를 반환합니다."""
+def get_sheets_service():
+    """구글 서비스 계정 인증 후 Sheets 서비스 객체와 sheet_id를 반환합니다."""
     if not HAS_GOOGLE_LIBS or "google_drive" not in st.secrets:
         return None, None
     try:
         credentials_info = dict(st.secrets["google_drive"])
-        folder_id = credentials_info.pop("folder_id", None)
-        
+        sheet_id = credentials_info.pop("sheet_id", None)
+        # 기존 folder_id가 남아있을 수 있으므로 제거
+        credentials_info.pop("folder_id", None)
+
         if "private_key" in credentials_info:
             pk = credentials_info["private_key"]
-            # 1단계: 이중 이스케이프 처리 (\\n → \n)
-            pk = pk.replace("\\\\n", "\n")
-            # 2단계: 단일 이스케이프 처리 (\n → 실제 줄바꿈)
             pk = pk.replace("\\n", "\n")
-            # 3단계: 혹시 리터럴 문자열 r"\n"이 남아있는 경우
-            if "\n" not in pk and "\\n" not in pk:
-                pk = pk.replace(r"\n", "\n")
             credentials_info["private_key"] = pk
 
         creds = service_account.Credentials.from_service_account_info(
             credentials_info,
-            scopes=["https://www.googleapis.com/auth/drive"]
+            scopes=[
+                "https://www.googleapis.com/auth/spreadsheets"
+            ]
         )
-        service = build("drive", "v3", credentials=creds)
-        return service, folder_id
+        service = build("sheets", "v4", credentials=creds)
+        return service, sheet_id
     except Exception as e:
-        logger.error(f"Google Drive 인증 실패: {e}")
+        logger.error(f"Google Sheets 인증 실패: {e}")
         return None, None
 
 
-def upload_or_update_gdrive_file(filename, content_dict):
-    """구글 드라이브의 특정 폴더에 파일을 업로드하거나 기존 파일을 업데이트합니다."""
-    service, folder_id = get_gdrive_service()
-    if not service or not folder_id:
+def _get_all_rows(service, sheet_id):
+    """시트의 모든 행을 가져옵니다. 반환: [[filename, json_data, last_updated], ...]"""
+    try:
+        result = service.spreadsheets().values().get(
+            spreadsheetId=sheet_id,
+            range="Sheet1!A:C"
+        ).execute()
+        return result.get("values", [])
+    except Exception as e:
+        logger.error(f"Google Sheets 읽기 실패: {e}")
+        return []
+
+
+def _find_row_index(rows, filename):
+    """filename이 일치하는 행의 인덱스를 반환 (1-based, 시트 행번호). 없으면 -1."""
+    base_name = os.path.basename(filename)
+    for i, row in enumerate(rows):
+        if len(row) > 0 and row[0] == base_name:
+            return i + 1  # 시트는 1-based
+    return -1
+
+
+def upload_or_update_gsheet(filename, content_dict):
+    """Google Sheets에 백업 데이터를 저장(업서트)합니다."""
+    service, sheet_id = get_sheets_service()
+    if not service or not sheet_id:
         return False
 
     base_name = os.path.basename(filename)
-    json_data = json.dumps(content_dict, ensure_ascii=False, indent=4)
+    json_data = json.dumps(content_dict, ensure_ascii=False)
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     try:
-        query = f"name = '{base_name}' and '{folder_id}' in parents and trashed = false"
-        results = service.files().list(q=query, fields="files(id)").execute()
-        files = results.get("files", [])
+        rows = _get_all_rows(service, sheet_id)
+        row_idx = _find_row_index(rows, filename)
 
-        fh = io.BytesIO(json_data.encode("utf-8"))
-        media = MediaIoBaseUpload(fh, mimetype="application/json", resumable=True)
+        new_row = [[base_name, json_data, timestamp]]
 
-        if files:
-            file_id = files[0]["id"]
-            service.files().update(fileId=file_id, media_body=media).execute()
+        if row_idx > 0:
+            # 기존 행 업데이트
+            service.spreadsheets().values().update(
+                spreadsheetId=sheet_id,
+                range=f"Sheet1!A{row_idx}:C{row_idx}",
+                valueInputOption="RAW",
+                body={"values": new_row}
+            ).execute()
         else:
-            file_metadata = {"name": base_name, "parents": [folder_id]}
-            service.files().create(body=file_metadata, media_body=media, fields="id").execute()
+            # 새 행 추가
+            service.spreadsheets().values().append(
+                spreadsheetId=sheet_id,
+                range="Sheet1!A:C",
+                valueInputOption="RAW",
+                insertDataOption="INSERT_ROWS",
+                body={"values": new_row}
+            ).execute()
         return True
     except Exception as e:
-        logger.error(f"Google Drive 업로드 실패 ({base_name}): {e}")
+        logger.error(f"Google Sheets 업로드 실패 ({base_name}): {e}")
         return False
 
 
-def delete_gdrive_file_if_exists(filename):
-    """구글 드라이브에서 해당 파일명과 일치하는 백업을 완전히 삭제합니다."""
-    service, folder_id = get_gdrive_service()
-    if not service or not folder_id:
+def delete_gsheet_row_if_exists(filename):
+    """Google Sheets에서 해당 백업 행을 삭제합니다."""
+    service, sheet_id = get_sheets_service()
+    if not service or not sheet_id:
         return False
-    base_name = os.path.basename(filename)
+
     try:
-        query = f"name = '{base_name}' and '{folder_id}' in parents and trashed = false"
-        results = service.files().list(q=query, fields="files(id)").execute()
-        files = results.get("files", [])
-        for f in files:
-            service.files().delete(fileId=f["id"]).execute()
+        rows = _get_all_rows(service, sheet_id)
+        row_idx = _find_row_index(rows, filename)
+        if row_idx > 0:
+            # 행 내용을 비워서 삭제 처리
+            service.spreadsheets().values().update(
+                spreadsheetId=sheet_id,
+                range=f"Sheet1!A{row_idx}:C{row_idx}",
+                valueInputOption="RAW",
+                body={"values": [["", "", ""]]}
+            ).execute()
         return True
     except Exception as e:
-        logger.error(f"Google Drive 삭제 실패 ({base_name}): {e}")
+        logger.error(f"Google Sheets 삭제 실패: {e}")
         return False
 
 
-def get_gdrive_backup_list():
-    """구글 드라이브 지정 폴더에 저장된 JSON 백업 파일 목록을 로드합니다."""
-    service, folder_id = get_gdrive_service()
+def get_gsheet_backup_list():
+    """Google Sheets에 저장된 백업 목록을 로드합니다."""
+    service, sheet_id = get_sheets_service()
     options = {}
-    if not service or not folder_id:
+    if not service or not sheet_id:
         return options
     try:
-        query = f"'{folder_id}' in parents and mimeType = 'application/json' and trashed = false"
-        results = service.files().list(q=query, fields="files(id, name)").execute()
-        files = results.get("files", [])
-
-        for f in files:
-            request = service.files().get_media(fileId=f["id"])
-            fh = io.BytesIO()
-            downloader = MediaIoBaseDownload(fh, request)
-            done = False
-            while not done:
-                status, done = downloader.next_chunk()
-
-            fh.seek(0)
-            data = json.loads(fh.read().decode("utf-8"))
-            label = f"[☁️ Cloud] {data['info']['supplier']} by {data['info']['evaluator']} ({data['last_updated']})"
-            options[label] = data
+        rows = _get_all_rows(service, sheet_id)
+        for row in rows:
+            if len(row) >= 2 and row[0] and row[1]:
+                try:
+                    data = json.loads(row[1])
+                    ts = row[2] if len(row) >= 3 else "unknown"
+                    label = f"[☁️ Cloud] {data['info']['supplier']} by {data['info']['evaluator']} ({ts})"
+                    options[label] = data
+                except (json.JSONDecodeError, KeyError):
+                    continue
     except Exception as e:
-        logger.error(f"Google Drive 백업 목록 로딩 실패: {e}")
+        logger.error(f"Google Sheets 백업 목록 로딩 실패: {e}")
     return options
 
 
 # =====================================================================
 # 파일명 생성 함수
-# [FIX] 공백을 언더스코어로 치환하여 OS 호환성 개선
 # =====================================================================
 def get_backup_filename(supplier, evaluator):
     safe_sup = "".join(c for c in supplier if c.isalnum() or c in " _-").strip().replace(" ", "_")
@@ -179,7 +188,7 @@ def get_backup_filename(supplier, evaluator):
 
 
 # =====================================================================
-# [FIX] 오래된 백업 파일 정리 - 세션당 1회만 실행
+# 오래된 백업 파일 정리 - 세션당 1회
 # =====================================================================
 def cleanup_old_backups():
     if st.session_state.get("_cleanup_done", False):
@@ -210,10 +219,9 @@ def save_temp_backup():
     }
     fname = get_backup_filename(supplier, evaluator)
 
-    # 구글 드라이브 백업 시도
-    uploaded_to_gdrive = upload_or_update_gdrive_file(fname, backup_data)
-    if not uploaded_to_gdrive and HAS_GOOGLE_LIBS and "google_drive" in st.secrets:
-        # [FIX] 드라이브 설정이 있는데 업로드 실패 시 사용자에게 경고
+    # Google Sheets 백업 시도
+    uploaded = upload_or_update_gsheet(fname, backup_data)
+    if not uploaded and HAS_GOOGLE_LIBS and "google_drive" in st.secrets:
         st.session_state._gdrive_warning = True
 
     # 로컬 서버 보존용 백업
@@ -232,7 +240,7 @@ def handle_download():
         evaluator = st.session_state.master_info.get("evaluator", "")
         if supplier and evaluator:
             fname = get_backup_filename(supplier, evaluator)
-            delete_gdrive_file_if_exists(fname)
+            delete_gsheet_row_if_exists(fname)
             if os.path.exists(fname):
                 try:
                     os.remove(fname)
@@ -244,7 +252,7 @@ def handle_download():
         st.session_state.download_action_status = "kept"
 
 
-# 프로세스 리스트 재정렬 함수 (No. 업데이트)
+# 프로세스 리스트 재정렬 함수
 def reindex_processes():
     for i, p in enumerate(st.session_state.process_list):
         p["No."] = i + 1
@@ -252,7 +260,6 @@ def reindex_processes():
 
 # =====================================================================
 # 폼 네비게이션 및 상태 동기화 로직
-# [FIX] nav_index 범위 검증을 추가하여 -1 등 비정상 접근 방지
 # =====================================================================
 def sync_form_with_state():
     if st.session_state.is_inserting:
@@ -264,7 +271,6 @@ def sync_form_with_state():
     else:
         plist = st.session_state.process_list
         idx = st.session_state.nav_index
-        # [FIX] 인덱스 범위 안전 검증
         if len(plist) > 0 and 0 <= idx < len(plist):
             p = plist[idx]
             st.session_state.p_name_input = p["Process"] if p["Process"] != "N/A" else ""
@@ -273,7 +279,6 @@ def sync_form_with_state():
             st.session_state.p_score_input = p["PAMI"]
             st.session_state.p_remark_input = p["Remark"]
         else:
-            # 인덱스가 비정상이면 삽입 모드로 전환
             st.session_state.is_inserting = True
             st.session_state.nav_index = max(len(plist) - 1, -1)
             st.session_state.p_name_input = ""
@@ -357,7 +362,6 @@ def process_form_submit():
 
     if st.session_state.is_inserting:
         target_idx = st.session_state.nav_index + 1
-
         is_appending_at_end = (target_idx == len(st.session_state.process_list))
 
         new_process = {
@@ -397,11 +401,11 @@ def process_form_submit():
     sync_form_with_state()
 
 
-# 앱 구동 시 3일 지난 백업 파일 청소 (세션당 1회)
+# 앱 구동 시 백업 청소 (세션당 1회)
 cleanup_old_backups()
 
 # =====================================================================
-# 1. 세션 상태 초기화
+# 세션 상태 초기화
 # =====================================================================
 if 'master_info' not in st.session_state:
     st.session_state.master_info = {"supplier": "", "evaluator": ""}
@@ -431,19 +435,19 @@ if st.session_state.success_toast:
     st.toast(st.session_state.success_toast)
     st.session_state.success_toast = ""
 
-# [FIX] Google Drive 경고 표시
+# Google Sheets 경고 표시
 if st.session_state.get("_gdrive_warning", False):
-    st.warning("⚠️ Google Drive 클라우드 백업에 실패했습니다. 로컬 백업만 저장되었습니다.")
+    st.warning("⚠️ Google Sheets 클라우드 백업에 실패했습니다. 로컬 백업만 저장되었습니다.")
     st.session_state._gdrive_warning = False
 
 # =====================================================================
-# 2. Step 1: Supplier & Evaluator Info
+# Step 1: Supplier & Evaluator Info
 # =====================================================================
 with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=not st.session_state.is_evaluating):
     backup_options = {}
 
     if not st.session_state.is_evaluating:
-        backup_options.update(get_gdrive_backup_list())
+        backup_options.update(get_gsheet_backup_list())
 
     backup_files = glob.glob(os.path.join(BACKUP_DIR, "*.json"))
     if (backup_files or backup_options) and not st.session_state.is_evaluating:
@@ -503,7 +507,7 @@ with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=not st.sessi
                 st.rerun()
 
 # =====================================================================
-# 3. Step 2: PAMI Input
+# Step 2: PAMI Input
 # =====================================================================
 if st.session_state.is_evaluating:
     st.info(
@@ -515,13 +519,11 @@ if st.session_state.is_evaluating:
         st.warning("⚠️ CSV downloaded. Automatic backup is now disabled for this session.")
 
     # =====================================================================
-    # 엑셀 템플릿 기반 일괄 업로드(Bulk Upload) 기능
-    # [FIX] Type, Score 값 검증 로직 추가
+    # Bulk Upload via Excel
     # =====================================================================
     with st.expander("📂 Bulk Upload via Excel", expanded=False):
         st.markdown("**엑셀 템플릿을 사용하여 여러 프로세스를 한 번에 등록할 수 있습니다.**")
 
-        # 1) 다운로드할 엑셀 템플릿 데이터프레임 생성
         template_df = pd.DataFrame({
             "Process Name": ["Assembly 1", "Testing"],
             "Description": ["Engine assembly", "Final check"],
@@ -542,10 +544,8 @@ if st.session_state.is_evaluating:
             help="양식을 다운로드하여 내용을 채운 뒤 아래에 업로드하세요."
         )
 
-        # 2) 엑셀 파일 업로더
         uploaded_file = st.file_uploader("Upload filled Excel template", type=["xlsx", "xls"])
 
-        # 3) 업로드 후 데이터 반영 로직
         if uploaded_file is not None:
             if st.button("🚀 Upload & Apply Data"):
                 try:
@@ -565,7 +565,6 @@ if st.session_state.is_evaluating:
                             if pd.isna(desc) or str(desc).strip() == "":
                                 continue
 
-                            # [FIX] Type 값 검증 - 대소문자 무관하게 처리
                             raw_type = str(row.get("Type", "")).strip().upper()
                             if raw_type not in VALID_TYPES:
                                 skipped_rows.append(
@@ -573,7 +572,6 @@ if st.session_state.is_evaluating:
                                 )
                                 continue
 
-                            # [FIX] Score 값 검증 - 1~5 범위 정수만 허용
                             try:
                                 raw_score = int(row.get("Score", 0))
                             except (ValueError, TypeError):
@@ -602,14 +600,11 @@ if st.session_state.is_evaluating:
                         if added_count > 0:
                             reindex_processes()
                             save_temp_backup()
-
                             st.session_state.is_inserting = True
                             st.session_state.nav_index = len(st.session_state.process_list) - 1
                             sync_form_with_state()
-
                             st.success(f"✅ {added_count}개의 프로세스가 성공적으로 일괄 등록되었습니다!")
 
-                        # [FIX] 스킵된 행이 있으면 사용자에게 상세 피드백 제공
                         if skipped_rows:
                             st.warning(
                                 f"⚠️ {len(skipped_rows)}개 행이 유효하지 않아 건너뛰었습니다:\n\n"
@@ -717,7 +712,7 @@ if st.session_state.is_evaluating:
                 st.button("❌ Cancel", on_click=cancel_delete, use_container_width=True)
 
     # =====================================================================
-    # 4. Evaluation Summary & Export
+    # Evaluation Summary & Export
     # =====================================================================
     if st.session_state.process_list:
         st.write("---")
@@ -736,7 +731,6 @@ if st.session_state.is_evaluating:
         with m_col2:
             st.metric(label="Total OAMI Average", value=f"{oami_avg:.2f} / 5.0")
 
-        # 텍스트 모바일 복사 영역
         raw_text = (
             f"Supplier: {st.session_state.master_info['supplier']} | "
             f"Evaluator: {st.session_state.master_info['evaluator']} | "
@@ -759,7 +753,7 @@ if st.session_state.is_evaluating:
 
             safe_raw_text = json.dumps(raw_text)
 
-            # [FIX] 버튼에 고유 id 부여하여 querySelector 충돌 방지
+            # [FIX] st.html로 교체 (components.html 지원 종료 대응)
             copy_text_html = f"""
             <button id="btn-copy-text" onclick="copyToClipboard()" style="width: 100%; height: 40px; background-color: #0d6efd; color: white; border: none; border-radius: 5px; font-weight: bold; font-size: 14px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                 📋 Copy Text for Outlook
@@ -807,7 +801,7 @@ if st.session_state.is_evaluating:
             }}
             </script>
             """
-            components.html(copy_text_html, height=50)
+            st.html(copy_text_html)
 
             st.code(raw_text, language="text")
 
@@ -832,7 +826,7 @@ if st.session_state.is_evaluating:
                 f"<br><br>{html_table}</div>"
             )
 
-            # [FIX] 버튼에 고유 id 부여
+            # [FIX] st.html로 교체 + CSS로 높이/스크롤 제어
             copy_table_html = f"""
             <button id="btn-copy-table" onclick='copyPCTable()' style='width:100%; height:40px; background-color:#28a745; color:white; border:none; border-radius:5px; font-weight:bold; font-size:14px; cursor:pointer; margin-bottom:10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
                 📋 Copy Table for Outlook
@@ -860,7 +854,13 @@ if st.session_state.is_evaluating:
             }}
             </script>
             """
-            components.html(copy_table_html + email_html, height=450, scrolling=True)
+            styled_pc_html = f"""
+            <div style="max-height: 450px; overflow-y: auto;">
+            {copy_table_html}
+            {email_html}
+            </div>
+            """
+            st.html(styled_pc_html)
 
         st.write("")
 
@@ -891,10 +891,7 @@ if st.session_state.is_evaluating:
             key="delete_backup_checkbox"
         )
 
-        # =====================================================================
-        # [FIX] CSV 파일 형식 개선 - 요약 행을 별도 주석(#) 처리하여
-        # 표준 CSV 파서 호환성 확보 (pandas/Excel에서 정상 파싱 가능)
-        # =====================================================================
+        # CSV 파일 형식 - 요약 행을 # 주석 처리
         summary_line = (
             f"# Supplier: {st.session_state.master_info['supplier']} | "
             f"Evaluator: {st.session_state.master_info['evaluator']} | "
@@ -919,9 +916,7 @@ if st.session_state.is_evaluating:
         elif st.session_state.download_action_status == "kept":
             st.info("ℹ️ CSV downloaded successfully. The system backup remains on the server.")
 
-        # =====================================================================
-        # 데이터 초기화 (Yes/No)
-        # =====================================================================
+        # 데이터 초기화
         if not st.session_state.show_confirm_clear:
             if st.button("🚨 Clear All Data (Start New)", use_container_width=True):
                 st.session_state.show_confirm_clear = True
@@ -935,7 +930,7 @@ if st.session_state.is_evaluating:
                     evaluator = st.session_state.master_info.get("evaluator", "")
                     if supplier and evaluator:
                         fname = get_backup_filename(supplier, evaluator)
-                        delete_gdrive_file_if_exists(fname)
+                        delete_gsheet_row_if_exists(fname)
                         if os.path.exists(fname):
                             try:
                                 os.remove(fname)
