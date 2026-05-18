@@ -70,8 +70,17 @@ def get_gdrive_service():
     try:
         credentials_info = dict(st.secrets["google_drive"])
         folder_id = credentials_info.pop("folder_id", None)
+        
         if "private_key" in credentials_info:
-            credentials_info["private_key"] = credentials_info["private_key"].replace("\\n", "\n")
+            pk = credentials_info["private_key"]
+            # 1단계: 이중 이스케이프 처리 (\\n → \n)
+            pk = pk.replace("\\\\n", "\n")
+            # 2단계: 단일 이스케이프 처리 (\n → 실제 줄바꿈)
+            pk = pk.replace("\\n", "\n")
+            # 3단계: 혹시 리터럴 문자열 r"\n"이 남아있는 경우
+            if "\n" not in pk and "\\n" not in pk:
+                pk = pk.replace(r"\n", "\n")
+            credentials_info["private_key"] = pk
 
         creds = service_account.Credentials.from_service_account_info(
             credentials_info,
@@ -80,7 +89,6 @@ def get_gdrive_service():
         service = build("drive", "v3", credentials=creds)
         return service, folder_id
     except Exception as e:
-        # [FIX] 에러 로깅 추가 (사용자에게는 별도 알림)
         logger.error(f"Google Drive 인증 실패: {e}")
         return None, None
 
