@@ -954,3 +954,20 @@ if st.session_state.is_evaluating:
                 if st.button("❌ No, Cancel", use_container_width=True):
                     st.session_state.show_confirm_clear = False
                     st.rerun()
+
+# =====================================================================
+# Footer - README 링크 (앱 최하단, 항상 표시)
+# 평가 화면 여부와 관계없이 모든 페이지에서 노출
+# =====================================================================
+st.markdown("---")
+st.markdown(
+    "<div style='text-align: center; color: #aaa; font-size: 13px; padding: 4px 0 8px 0;'>"
+    "📖 How to use &nbsp;→&nbsp; "
+    "<a href='https://github.com/kim2140/oami#readme' target='_blank' "
+    "style='color: #0d6efd; text-decoration: none;'>English</a>"
+    " &nbsp;/&nbsp; "
+    "<a href='https://github.com/kim2140/oami/blob/main/README_KO.md' target='_blank' "
+    "style='color: #0d6efd; text-decoration: none;'>한국어</a>"
+    "</div>",
+    unsafe_allow_html=True
+)
