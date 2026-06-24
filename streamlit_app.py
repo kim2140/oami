@@ -975,11 +975,12 @@ if st.session_state.is_evaluating:
             f"Evaluator: {st.session_state.master_info['evaluator']} | "
             f"Processes: {total_processes} | Avg OAMI: {oami_avg:.2f}\n"
         )
-        raw_text += "No.|Process|Type|Description|PAMI|Remark|Time\n"
+        # [v2.2.1] 컬럼 순서 변경: No. > Process > Description > Type > PAMI > Remark > Time
+        raw_text += "No.|Process|Description|Type|PAMI|Remark|Time\n"
         for _, row in df.iterrows():
             raw_text += (
-                f"{row['No.']}|{row['Process']}|{row['Type']}|"
-                f"{row['Description']}|{row['PAMI']}|{row['Remark']}|{row['Time']}\n"
+                f"{row['No.']}|{row['Process']}|{row['Description']}|"
+                f"{row['Type']}|{row['PAMI']}|{row['Remark']}|{row['Time']}\n"
             )
 
         tab_mobile, tab_pc = st.tabs(["📱 1. Mobile (Text)", "🖥️ 2. PC (Table)"])
@@ -1028,7 +1029,8 @@ if st.session_state.is_evaluating:
                 "**Note:** Tables cannot be auto-filled in the Mail App. "
                 "You must copy and paste this table manually."
             )
-            export_cols = ["No.", "Process", "Type", "Description", "PAMI", "Remark", "Time"]
+            # [v2.2.1] 컬럼 순서 변경: Description을 Type 앞으로
+            export_cols = ["No.", "Process", "Description", "Type", "PAMI", "Remark", "Time"]
             html_table  = df[export_cols].to_html(index=False).replace(
                 '<table border="1" class="dataframe">',
                 '<table border="1" cellpadding="8" style="border-collapse:collapse; text-align:left; font-family:Arial; width:100%;">'
@@ -1091,7 +1093,8 @@ if st.session_state.is_evaluating:
             f"Evaluator: {st.session_state.master_info['evaluator']} | "
             f"Processes: {total_processes} | Avg OAMI: {oami_avg:.2f}\n"
         )
-        export_df     = df[["No.", "Process", "Type", "Description", "PAMI", "Remark", "Time"]]
+        # [v2.2.1] CSV 컬럼 순서 변경: Description을 Type 앞으로
+        export_df     = df[["No.", "Process", "Description", "Type", "PAMI", "Remark", "Time"]]
         csv_data_bytes = (summary_line + export_df.to_csv(index=False)).encode('utf-8-sig')
 
         st.download_button(
