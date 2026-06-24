@@ -1,6 +1,38 @@
+# =============================================================================
+# Supplier OAMI Evaluation App
+# Version: 2.2.0
+#
+# [개요]
+# 공급업체 OAMI(Operation Assessment & Management Index) 평가 앱.
+# 프로세스별 Type(MH/P/WIP) 및 PAMI 점수(1~5)를 입력하고
+# Google Sheets(클라우드) + 서버 로컬 파일에 이중 백업.
+#
+# [v2.2.0 변경사항 - Fix 1 재설계]
+#
+# ▶ 저장 로직
+#   - 항상 로컬 파일 + 클라우드 동시 저장 시도
+#   - 인터넷 없으면 로컬 파일에만 저장 (클라우드 실패해도 로컬은 항상 저장)
+#
+# ▶ 복구 목록 표시 기준 (로컬/클라우드 timestamp 비교)
+#   - 클라우드 연결 불가 → 로컬만 표시
+#   - 클라우드 연결 가능 + 로컬이 클라우드보다 10초 초과 최신
+#     → 로컬이 더 최신 데이터이므로 로컬만 표시
+#   - 클라우드 연결 가능 + 클라우드가 최신(또는 10초 이내 차이)
+#     → 클라우드만 표시 (정상 상태)
+#
+# ▶ 자동 동기화 (하루 1회)
+#   - 로컬 timestamp가 클라우드보다 10초 이상 앞서면
+#     로컬 데이터를 클라우드에 덮어써서 동기화
+#   - 동기화 완료 후 복구 목록은 클라우드만 표시
+#
+# [v2.1.0 변경사항 - Fix 2]
+#   - Google Sheets 14일 초과 행 자동 삭제 (세션 시작 시 1회 실행)
+#   - 앱 휴지기 후 wake-up 시에도 만료 데이터 정리됨
+# =============================================================================
+
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import urllib.parse
 import json
 import os
@@ -27,37 +59,39 @@ except ImportError:
 
 # 브라우저 탭 아이콘 및 제목
 st.set_page_config(page_title="Supplier OAMI", page_icon="📝", layout="centered")
-
 st.markdown("### 📝 Supplier OAMI Evaluation App")
 
-# 백업 전용 폴더 설정
+# 로컬 백업 폴더
 BACKUP_DIR = "oami_backups"
 if not os.path.exists(BACKUP_DIR):
     os.makedirs(BACKUP_DIR)
 
 # 유효값 상수
-VALID_TYPES = {"MH", "P", "WIP"}
+VALID_TYPES  = {"MH", "P", "WIP"}
 VALID_SCORES = {1, 2, 3, 4, 5}
 
-# [UPDATE] 백업 보관 기간: 14일 (2주)
+# 백업 보관 기간 (일)
 BACKUP_RETENTION_DAYS = 14
+
+# 로컬/클라우드 시간 차이 임계값 (초) — 이 값 초과 시 로컬이 더 최신으로 판단
+# 정상 상태에서 로컬→클라우드 저장 시간차는 1~3초이므로
+# 30초를 초과하면 오프라인 중 작업한 것으로 판단
+TS_DIFF_THRESHOLD_SEC = 30
+
 
 # =====================================================================
 # Google Sheets 헬퍼 함수
 # =====================================================================
 def get_sheets_service():
+    """Google Sheets API 서비스 객체와 sheet_id 반환. 실패 시 (None, None)."""
     if not HAS_GOOGLE_LIBS or "google_drive" not in st.secrets:
         return None, None
     try:
         credentials_info = dict(st.secrets["google_drive"])
         sheet_id = credentials_info.pop("sheet_id", None)
         credentials_info.pop("folder_id", None)
-
         if "private_key" in credentials_info:
-            pk = credentials_info["private_key"]
-            pk = pk.replace("\\n", "\n")
-            credentials_info["private_key"] = pk
-
+            credentials_info["private_key"] = credentials_info["private_key"].replace("\\n", "\n")
         creds = service_account.Credentials.from_service_account_info(
             credentials_info,
             scopes=["https://www.googleapis.com/auth/spreadsheets"]
@@ -70,10 +104,10 @@ def get_sheets_service():
 
 
 def _get_all_rows(service, sheet_id):
+    """Sheets A:C 전체 행 반환."""
     try:
         result = service.spreadsheets().values().get(
-            spreadsheetId=sheet_id,
-            range="A:C"
+            spreadsheetId=sheet_id, range="A:C"
         ).execute()
         return result.get("values", [])
     except Exception as e:
@@ -82,6 +116,7 @@ def _get_all_rows(service, sheet_id):
 
 
 def _find_row_index(rows, filename):
+    """파일명으로 행 인덱스(1-based) 탐색. 없으면 -1."""
     base_name = os.path.basename(filename)
     for i, row in enumerate(rows):
         if len(row) > 0 and row[0] == base_name:
@@ -90,19 +125,17 @@ def _find_row_index(rows, filename):
 
 
 def upload_or_update_gsheet(filename, content_dict):
+    """Sheets에 백업 데이터 업로드(신규) 또는 갱신(기존 행). 성공 True, 실패 False."""
     service, sheet_id = get_sheets_service()
     if not service or not sheet_id:
         return False
-
-    base_name = os.path.basename(filename)
-    json_data = json.dumps(content_dict, ensure_ascii=False)
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+    base_name  = os.path.basename(filename)
+    json_data  = json.dumps(content_dict, ensure_ascii=False)
+    timestamp  = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
-        rows = _get_all_rows(service, sheet_id)
+        rows    = _get_all_rows(service, sheet_id)
         row_idx = _find_row_index(rows, filename)
         new_row = [[base_name, json_data, timestamp]]
-
         if row_idx > 0:
             service.spreadsheets().values().update(
                 spreadsheetId=sheet_id,
@@ -125,11 +158,12 @@ def upload_or_update_gsheet(filename, content_dict):
 
 
 def delete_gsheet_row_if_exists(filename):
+    """Sheets에서 해당 파일명 행을 빈 값으로 덮어써 삭제 처리."""
     service, sheet_id = get_sheets_service()
     if not service or not sheet_id:
         return False
     try:
-        rows = _get_all_rows(service, sheet_id)
+        rows    = _get_all_rows(service, sheet_id)
         row_idx = _find_row_index(rows, filename)
         if row_idx > 0:
             service.spreadsheets().values().update(
@@ -144,7 +178,28 @@ def delete_gsheet_row_if_exists(filename):
         return False
 
 
+def get_gsheet_cloud_timestamp(filename):
+    """
+    Sheets에서 해당 파일명 행의 timestamp 문자열 반환.
+    없거나 실패 시 None.
+    """
+    service, sheet_id = get_sheets_service()
+    if not service or not sheet_id:
+        return None
+    try:
+        rows    = _get_all_rows(service, sheet_id)
+        row_idx = _find_row_index(rows, filename)
+        if row_idx > 0:
+            row = rows[row_idx - 1]
+            return row[2] if len(row) >= 3 else None
+        return None
+    except Exception as e:
+        logger.error(f"Sheets timestamp 조회 실패: {e}")
+        return None
+
+
 def get_gsheet_backup_list():
+    """Sheets에서 유효한 백업 목록 반환. {label: data} 딕트."""
     service, sheet_id = get_sheets_service()
     options = {}
     if not service or not sheet_id:
@@ -154,9 +209,12 @@ def get_gsheet_backup_list():
         for row in rows:
             if len(row) >= 2 and row[0] and row[1]:
                 try:
-                    data = json.loads(row[1])
-                    ts = row[2] if len(row) >= 3 else "unknown"
-                    label = f"[☁️ Cloud] {data['info']['supplier']} by {data['info']['evaluator']} ({ts})"
+                    data  = json.loads(row[1])
+                    ts    = row[2] if len(row) >= 3 else "unknown"
+                    label = (
+                        f"[☁️ Cloud] {data['info']['supplier']} "
+                        f"by {data['info']['evaluator']} ({ts})"
+                    )
                     options[label] = data
                 except (json.JSONDecodeError, KeyError):
                     continue
@@ -166,19 +224,58 @@ def get_gsheet_backup_list():
 
 
 # =====================================================================
+# [Fix 2] Google Sheets 14일 초과 행 자동 삭제
+# 앱 세션 시작(wake-up 포함) 시 1회 실행.
+# timestamp(C열)를 파싱해 14일 초과 행을 빈 행으로 덮어씀.
+# =====================================================================
+def cleanup_old_gsheet_backups():
+    """Sheets에서 14일 초과 백업 행을 삭제. 세션당 1회."""
+    if st.session_state.get("_gsheet_cleanup_done", False):
+        return
+    service, sheet_id = get_sheets_service()
+    if not service or not sheet_id:
+        st.session_state._gsheet_cleanup_done = True
+        return
+    try:
+        rows   = _get_all_rows(service, sheet_id)
+        cutoff = datetime.now() - timedelta(days=BACKUP_RETENTION_DAYS)
+        for i, row in enumerate(rows):
+            row_num = i + 1
+            if len(row) < 3 or not row[0]:
+                continue
+            try:
+                ts = datetime.strptime(row[2], "%Y-%m-%d %H:%M:%S")
+                if ts < cutoff:
+                    service.spreadsheets().values().update(
+                        spreadsheetId=sheet_id,
+                        range=f"A{row_num}:C{row_num}",
+                        valueInputOption="RAW",
+                        body={"values": [["", "", ""]]}
+                    ).execute()
+                    logger.warning(f"[GSheet Cleanup] 만료 행 삭제: row {row_num}, ts={row[2]}")
+            except ValueError:
+                continue
+    except Exception as e:
+        logger.error(f"Google Sheets 만료 정리 실패: {e}")
+    st.session_state._gsheet_cleanup_done = True
+
+
+# =====================================================================
 # 파일명 생성 함수
 # =====================================================================
 def get_backup_filename(supplier, evaluator):
-    safe_sup = "".join(c for c in supplier if c.isalnum() or c in " _-").strip().replace(" ", "_")
+    """supplier + evaluator 조합으로 로컬 백업 파일 경로 생성."""
+    safe_sup  = "".join(c for c in supplier  if c.isalnum() or c in " _-").strip().replace(" ", "_")
     safe_eval = "".join(c for c in evaluator if c.isalnum() or c in " _-").strip().replace(" ", "_")
     return os.path.join(BACKUP_DIR, f"{safe_sup}_{safe_eval}.json")
 
 
 # =====================================================================
-# 오래된 백업 파일 정리 - 세션당 1회
+# 로컬 파일 만료 정리 (서버 측, 세션당 1회)
 # =====================================================================
-def cleanup_old_backups():
-    if st.session_state.get("_cleanup_done", False):
+def cleanup_old_local_backups():
+    """로컬 백업 파일 중 14일 초과분 삭제. 세션당 1회."""
+    if st.session_state.get("_local_cleanup_done", False):
         return
     now = time.time()
     for f in glob.glob(os.path.join(BACKUP_DIR, "*.json")):
@@ -186,42 +283,230 @@ def cleanup_old_backups():
             if os.stat(f).st_mtime < now - (BACKUP_RETENTION_DAYS * 86400):
                 os.remove(f)
         except Exception as e:
-            logger.warning(f"백업 파일 정리 실패 ({f}): {e}")
-    st.session_state._cleanup_done = True
+            logger.warning(f"로컬 백업 파일 정리 실패 ({f}): {e}")
+    st.session_state._local_cleanup_done = True
 
 
 # =====================================================================
-# 실시간 자동 백업 - 클라우드 우선, 실패 시에만 로컬
+# [v2.2.0] timestamp 차이 계산 유틸
+# =====================================================================
+def ts_diff_seconds(local_ts_str, cloud_ts_str):
+    """
+    로컬 - 클라우드 timestamp 차이(초) 반환.
+    양수 = 로컬이 더 최신, 음수 = 클라우드가 더 최신.
+    파싱 실패 시 0 반환.
+    """
+    try:
+        fmt      = "%Y-%m-%d %H:%M:%S"
+        local_ts = datetime.strptime(local_ts_str, fmt)
+        cloud_ts = datetime.strptime(cloud_ts_str, fmt)
+        return (local_ts - cloud_ts).total_seconds()
+    except Exception:
+        return 0
+
+
+# =====================================================================
+# [v2.2.0] 저장: 로컬 + 클라우드 항상 동시 저장
+#
+# - 로컬은 인터넷 유무와 관계없이 항상 저장 (오프라인 대비)
+# - 클라우드는 가능할 때만 저장 (실패해도 로컬이 유지됨)
 # =====================================================================
 def save_temp_backup():
+    """항상 로컬 저장 + 클라우드 저장 시도. stop_backup 시 동작 안 함."""
     if st.session_state.get("stop_backup", False):
         return
-    supplier = st.session_state.master_info.get("supplier", "")
+    supplier  = st.session_state.master_info.get("supplier", "")
     evaluator = st.session_state.master_info.get("evaluator", "")
     if not supplier or not evaluator:
         return
 
     backup_data = {
-        "info": st.session_state.master_info,
-        "list": st.session_state.process_list,
+        "info":         st.session_state.master_info,
+        "list":         st.session_state.process_list,
         "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
     fname = get_backup_filename(supplier, evaluator)
 
-    uploaded = upload_or_update_gsheet(fname, backup_data)
-    if not uploaded:
+    # ① 로컬 파일 저장 — 인터넷 없어도 항상 실행
+    try:
+        with open(fname, "w", encoding="utf-8") as f:
+            json.dump(backup_data, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        logger.error(f"로컬 백업 저장 실패: {e}")
+
+    # ② 클라우드 저장 — 실패해도 로컬이 유지되므로 문제없음
+    upload_or_update_gsheet(fname, backup_data)
+
+
+# =====================================================================
+# [v2.2.0] 자동 동기화: 하루 1회
+# 로컬 timestamp가 클라우드보다 TS_DIFF_THRESHOLD_SEC 초 이상 앞서면
+# 로컬 → 클라우드 덮어쓰기.
+# 오프라인 중 작업했던 내용이 다음날 앱 접속 시 자동으로 클라우드에 반영됨.
+# =====================================================================
+def sync_local_to_cloud_if_needed():
+    """로컬이 더 최신이면 클라우드에 덮어씀. 세션당 1회."""
+    if st.session_state.get("_sync_done", False):
+        return
+    st.session_state._sync_done = True  # 먼저 플래그 세팅 (오류 나도 중복 실행 방지)
+
+    supplier  = st.session_state.master_info.get("supplier", "")
+    evaluator = st.session_state.master_info.get("evaluator", "")
+    if not supplier or not evaluator:
+        return
+
+    fname = get_backup_filename(supplier, evaluator)
+    if not os.path.exists(fname):
+        return  # 로컬 파일 없으면 동기화 불필요
+
+    # 로컬 timestamp 읽기
+    try:
+        with open(fname, "r", encoding="utf-8") as f:
+            local_data = json.load(f)
+        local_ts = local_data.get("last_updated", "")
+    except Exception:
+        return
+
+    # 클라우드 timestamp 읽기
+    cloud_ts = get_gsheet_cloud_timestamp(fname)
+
+    if cloud_ts is None:
+        # 클라우드에 없으면 로컬을 업로드
+        upload_or_update_gsheet(fname, local_data)
+        logger.warning("[Sync] 클라우드에 없음 → 로컬 업로드 완료")
+        return
+
+    diff = ts_diff_seconds(local_ts, cloud_ts)
+    if diff > TS_DIFF_THRESHOLD_SEC:
+        # 로컬이 더 최신 → 클라우드에 덮어씀
+        upload_or_update_gsheet(fname, local_data)
+        logger.warning(f"[Sync] 로컬이 {diff:.0f}초 최신 → 클라우드 덮어쓰기 완료")
+
+
+# =====================================================================
+# [v2.2.0] 복구 목록 빌드
+#
+# 판단 기준 (파일별로 개별 비교):
+#   1. 클라우드 연결 불가 → 로컬만 표시
+#   2. 클라우드 연결 가능 + 로컬이 10초 초과 최신
+#      → 로컬이 더 최신 데이터이므로 로컬만 표시
+#   3. 클라우드 연결 가능 + 클라우드가 최신(혹은 10초 이내 차이)
+#      → 클라우드만 표시
+# =====================================================================
+def build_backup_options():
+    """
+    {label: data} 딕트 반환. 라벨 prefix로 출처 구분:
+      [☁️ Cloud] — 클라우드 데이터
+      [🖥️ Local] — 로컬 데이터 (클라우드보다 최신인 경우만)
+    """
+    options     = {}
+    cloud_avail = get_sheets_service()[0] is not None  # 클라우드 연결 가능 여부
+
+    # 로컬 파일 목록 스캔
+    local_files = {}
+    for bf in glob.glob(os.path.join(BACKUP_DIR, "*.json")):
         try:
-            with open(fname, "w", encoding="utf-8") as f:
-                json.dump(backup_data, f, ensure_ascii=False, indent=4)
+            with open(bf, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            local_files[bf] = data
         except Exception as e:
-            logger.error(f"로컬 백업 저장 실패: {e}")
+            logger.warning(f"로컬 백업 파일 읽기 실패 ({bf}): {e}")
+
+    if not cloud_avail:
+        # 케이스 1: 클라우드 연결 불가 → 로컬만 표시
+        for bf, data in local_files.items():
+            try:
+                ts    = data.get("last_updated", "unknown")
+                label = (
+                    f"[🖥️ Local] {data['info']['supplier']} "
+                    f"by {data['info']['evaluator']} ({ts})"
+                )
+                options[label] = data
+            except KeyError:
+                continue
+        return options
+
+    # 클라우드 연결 가능: 파일별로 timestamp 비교 후 표시 출처 결정
+    # 먼저 클라우드 전체 목록을 한 번만 읽어서 캐싱
+    service, sheet_id = get_sheets_service()
+    cloud_rows = _get_all_rows(service, sheet_id) if service and sheet_id else []
+
+    def get_cloud_data_for_file(fname):
+        """cloud_rows에서 fname에 해당하는 (data, ts) 반환. 없으면 (None, None)."""
+        base = os.path.basename(fname)
+        for row in cloud_rows:
+            if len(row) >= 2 and row[0] == base:
+                try:
+                    d  = json.loads(row[1])
+                    ts = row[2] if len(row) >= 3 else None
+                    return d, ts
+                except Exception:
+                    return None, None
+        return None, None
+
+    # 로컬 파일과 클라우드를 비교해 표시 출처 결정
+    handled_bases = set()
+    for bf, local_data in local_files.items():
+        base = os.path.basename(bf)
+        handled_bases.add(base)
+        local_ts             = local_data.get("last_updated", "")
+        cloud_data, cloud_ts = get_cloud_data_for_file(bf)
+
+        if cloud_ts is None:
+            # 클라우드에 없는 파일 → 로컬 표시
+            try:
+                label = (
+                    f"[🖥️ Local] {local_data['info']['supplier']} "
+                    f"by {local_data['info']['evaluator']} ({local_ts})"
+                )
+                options[label] = local_data
+            except KeyError:
+                continue
+        else:
+            diff = ts_diff_seconds(local_ts, cloud_ts)
+            if diff > TS_DIFF_THRESHOLD_SEC:
+                # 케이스 2: 로컬이 10초 초과 최신 → 로컬만 표시
+                try:
+                    label = (
+                        f"[🖥️ Local] {local_data['info']['supplier']} "
+                        f"by {local_data['info']['evaluator']} ({local_ts})"
+                    )
+                    options[label] = local_data
+                except KeyError:
+                    continue
+            else:
+                # 케이스 3: 클라우드가 최신(혹은 동일) → 클라우드만 표시
+                try:
+                    label = (
+                        f"[☁️ Cloud] {cloud_data['info']['supplier']} "
+                        f"by {cloud_data['info']['evaluator']} ({cloud_ts})"
+                    )
+                    options[label] = cloud_data
+                except (KeyError, TypeError):
+                    continue
+
+    # 로컬에 없고 클라우드에만 있는 항목 추가
+    for row in cloud_rows:
+        if len(row) >= 2 and row[0] and row[0] not in handled_bases:
+            try:
+                data  = json.loads(row[1])
+                ts    = row[2] if len(row) >= 3 else "unknown"
+                label = (
+                    f"[☁️ Cloud] {data['info']['supplier']} "
+                    f"by {data['info']['evaluator']} ({ts})"
+                )
+                options[label] = data
+            except (json.JSONDecodeError, KeyError):
+                continue
+
+    return options
 
 
 # 다운로드 콜백
 def handle_download():
     if st.session_state.get("delete_backup_checkbox", True):
         st.session_state.stop_backup = True
-        supplier = st.session_state.master_info.get("supplier", "")
+        supplier  = st.session_state.master_info.get("supplier", "")
         evaluator = st.session_state.master_info.get("evaluator", "")
         if supplier and evaluator:
             fname = get_backup_filename(supplier, evaluator)
@@ -247,36 +532,35 @@ def reindex_processes():
 # =====================================================================
 def sync_form_with_state():
     if st.session_state.is_inserting:
-        st.session_state.p_name_input = ""
-        st.session_state.p_desc_input = ""
-        st.session_state.p_type_input = None
+        st.session_state.p_name_input  = ""
+        st.session_state.p_desc_input  = ""
+        st.session_state.p_type_input  = None
         st.session_state.p_score_input = None
         st.session_state.p_remark_input = ""
     else:
         plist = st.session_state.process_list
-        idx = st.session_state.nav_index
+        idx   = st.session_state.nav_index
         if len(plist) > 0 and 0 <= idx < len(plist):
             p = plist[idx]
-            st.session_state.p_name_input = p["Process"] if p["Process"] != "N/A" else ""
-            st.session_state.p_desc_input = p["Description"]
-            st.session_state.p_type_input = p["Type"]
-            st.session_state.p_score_input = p["PAMI"]
+            st.session_state.p_name_input   = p["Process"] if p["Process"] != "N/A" else ""
+            st.session_state.p_desc_input   = p["Description"]
+            st.session_state.p_type_input   = p["Type"]
+            st.session_state.p_score_input  = p["PAMI"]
             st.session_state.p_remark_input = p["Remark"]
         else:
-            st.session_state.is_inserting = True
-            st.session_state.nav_index = max(len(plist) - 1, -1)
-            st.session_state.p_name_input = ""
-            st.session_state.p_desc_input = ""
-            st.session_state.p_type_input = None
-            st.session_state.p_score_input = None
+            st.session_state.is_inserting   = True
+            st.session_state.nav_index      = max(len(plist) - 1, -1)
+            st.session_state.p_name_input   = ""
+            st.session_state.p_desc_input   = ""
+            st.session_state.p_type_input   = None
+            st.session_state.p_score_input  = None
             st.session_state.p_remark_input = ""
-
     st.session_state.show_delete_confirm = False
-    st.session_state.pami_form_error = ""
+    st.session_state.pami_form_error     = ""
 
 
 # =====================================================================
-# [UPDATE] 순환 네비게이션
+# 순환 네비게이션
 # Prev: 첫 번째에서 누르면 → 마지막으로
 # Next: 마지막에서 누르면 → 첫 번째로
 # =====================================================================
@@ -284,13 +568,11 @@ def nav_prev():
     plist = st.session_state.process_list
     if len(plist) == 0:
         return
-
     if st.session_state.is_inserting:
         st.session_state.is_inserting = False
     elif st.session_state.nav_index > 0:
         st.session_state.nav_index -= 1
     else:
-        # 첫 번째 → 마지막으로 순환
         st.session_state.nav_index = len(plist) - 1
     sync_form_with_state()
 
@@ -299,14 +581,11 @@ def nav_next():
     plist = st.session_state.process_list
     if len(plist) == 0:
         return
-
     if st.session_state.is_inserting:
         return
-
     if st.session_state.nav_index < len(plist) - 1:
         st.session_state.nav_index += 1
     else:
-        # 마지막 → 첫 번째로 순환
         st.session_state.nav_index = 0
     sync_form_with_state()
 
@@ -336,25 +615,23 @@ def delete_current_process():
     if not st.session_state.is_inserting and 0 <= idx < len(st.session_state.process_list):
         st.session_state.process_list.pop(idx)
         reindex_processes()
-
         if len(st.session_state.process_list) == 0:
-            st.session_state.nav_index = -1
+            st.session_state.nav_index    = -1
             st.session_state.is_inserting = True
         elif idx >= len(st.session_state.process_list):
-            st.session_state.nav_index = len(st.session_state.process_list) - 1
+            st.session_state.nav_index    = len(st.session_state.process_list) - 1
             st.session_state.is_inserting = False
         else:
             st.session_state.is_inserting = False
-
         save_temp_backup()
     sync_form_with_state()
 
 
 def process_form_submit():
-    p_name = st.session_state.p_name_input
-    p_desc = st.session_state.p_desc_input
-    p_type = st.session_state.p_type_input
-    p_score = st.session_state.p_score_input
+    p_name   = st.session_state.p_name_input
+    p_desc   = st.session_state.p_desc_input
+    p_type   = st.session_state.p_type_input
+    p_score  = st.session_state.p_score_input
     p_remark = st.session_state.p_remark_input
 
     if not p_desc or p_type is None or p_score is None:
@@ -364,74 +641,74 @@ def process_form_submit():
     st.session_state.pami_form_error = ""
 
     if st.session_state.is_inserting:
-        target_idx = st.session_state.nav_index + 1
+        target_idx        = st.session_state.nav_index + 1
         is_appending_at_end = (target_idx == len(st.session_state.process_list))
-
         new_process = {
-            "Supplier": st.session_state.master_info["supplier"],
-            "Evaluator": st.session_state.master_info["evaluator"],
-            "No.": 0,
-            "Process": p_name if p_name else "N/A",
-            "Type": p_type,
+            "Supplier":   st.session_state.master_info["supplier"],
+            "Evaluator":  st.session_state.master_info["evaluator"],
+            "No.":        0,
+            "Process":    p_name if p_name else "N/A",
+            "Type":       p_type,
             "Description": p_desc,
-            "PAMI": p_score,
-            "Remark": p_remark if p_remark else "",
-            "Time": datetime.now().strftime("%H:%M:%S")
+            "PAMI":       p_score,
+            "Remark":     p_remark if p_remark else "",
+            "Time":       datetime.now().strftime("%H:%M:%S")
         }
         st.session_state.process_list.insert(target_idx, new_process)
         reindex_processes()
-
-        st.session_state.nav_index = target_idx
-
-        if is_appending_at_end:
-            st.session_state.is_inserting = True
-        else:
-            st.session_state.is_inserting = False
-
+        st.session_state.nav_index    = target_idx
+        st.session_state.is_inserting = is_appending_at_end
         st.session_state.success_toast = f"Added successfully as No. {target_idx + 1}"
     else:
         idx = st.session_state.nav_index
-        p = st.session_state.process_list[idx]
-        p["Process"] = p_name if p_name else "N/A"
+        p   = st.session_state.process_list[idx]
+        p["Process"]     = p_name if p_name else "N/A"
         p["Description"] = p_desc
-        p["Type"] = p_type
-        p["PAMI"] = p_score
-        p["Remark"] = p_remark if p_remark else ""
-        p["Time"] = datetime.now().strftime("%H:%M:%S")
+        p["Type"]        = p_type
+        p["PAMI"]        = p_score
+        p["Remark"]      = p_remark if p_remark else ""
+        p["Time"]        = datetime.now().strftime("%H:%M:%S")
         st.session_state.success_toast = f"Updated No. {idx + 1}"
 
     save_temp_backup()
     sync_form_with_state()
 
 
-# 백업 청소 (세션당 1회)
-cleanup_old_backups()
+# =====================================================================
+# 앱 시작 시 정리 작업 (세션당 1회)
+# =====================================================================
+cleanup_old_local_backups()
+cleanup_old_gsheet_backups()
 
 # =====================================================================
 # 세션 상태 초기화
 # =====================================================================
-if 'master_info' not in st.session_state:
-    st.session_state.master_info = {"supplier": "", "evaluator": ""}
-if 'process_list' not in st.session_state:
-    st.session_state.process_list = []
-if 'is_evaluating' not in st.session_state:
-    st.session_state.is_evaluating = False
-if 'stop_backup' not in st.session_state:
-    st.session_state.stop_backup = False
+if 'master_info'           not in st.session_state:
+    st.session_state.master_info           = {"supplier": "", "evaluator": ""}
+if 'process_list'          not in st.session_state:
+    st.session_state.process_list          = []
+if 'is_evaluating'         not in st.session_state:
+    st.session_state.is_evaluating         = False
+if 'stop_backup'           not in st.session_state:
+    st.session_state.stop_backup           = False
 if 'download_action_status' not in st.session_state:
     st.session_state.download_action_status = None
-if 'show_confirm_clear' not in st.session_state:
-    st.session_state.show_confirm_clear = False
-if 'pami_form_error' not in st.session_state:
-    st.session_state.pami_form_error = ""
-if 'success_toast' not in st.session_state:
-    st.session_state.success_toast = ""
-if 'show_delete_confirm' not in st.session_state:
-    st.session_state.show_delete_confirm = False
-if 'nav_index' not in st.session_state:
-    st.session_state.nav_index = -1
-if 'is_inserting' not in st.session_state:
-    st.session_state.is_inserting = True
+if 'show_confirm_clear'    not in st.session_state:
+    st.session_state.show_confirm_clear    = False
+if 'pami_form_error'       not in st.session_state:
+    st.session_state.pami_form_error       = ""
+if 'success_toast'         not in st.session_state:
+    st.session_state.success_toast         = ""
+if 'show_delete_confirm'   not in st.session_state:
+    st.session_state.show_delete_confirm   = False
+if 'nav_index'             not in st.session_state:
+    st.session_state.nav_index             = -1
+if 'is_inserting'          not in st.session_state:
+    st.session_state.is_inserting          = True
+
+# 평가 중일 때 동기화 시도 (하루 1회)
+if st.session_state.is_evaluating:
+    sync_local_to_cloud_if_needed()
 
 # 토스트 메시지 출력
 if st.session_state.success_toast:
@@ -442,42 +719,29 @@ if st.session_state.success_toast:
 # Step 1: Supplier & Evaluator Info
 # =====================================================================
 with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=not st.session_state.is_evaluating):
-    backup_options = {}
 
     if not st.session_state.is_evaluating:
-        backup_options.update(get_gsheet_backup_list())
-
-    backup_files = glob.glob(os.path.join(BACKUP_DIR, "*.json"))
-    if (backup_files or backup_options) and not st.session_state.is_evaluating:
-        st.markdown(f"**Check Backup History (Past {BACKUP_RETENTION_DAYS} Days)**")
-        for bf in backup_files:
-            try:
-                with open(bf, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    label = f"[🖥️ Local] {data['info']['supplier']} by {data['info']['evaluator']} ({data['last_updated']})"
-                    if label not in backup_options:
-                        backup_options[label] = data
-            except Exception as e:
-                logger.warning(f"로컬 백업 파일 읽기 실패 ({bf}): {e}")
+        # [v2.2.0] 복구 목록: 로컬/클라우드 timestamp 비교 후 단일 출처만 표시
+        backup_options = build_backup_options()
 
         if backup_options:
+            st.markdown(f"**Check Backup History (Past {BACKUP_RETENTION_DAYS} Days)**")
             selected_backup = st.selectbox(
                 "Restore previous session",
                 options=["-- Select a backup --"] + list(backup_options.keys())
             )
             if selected_backup != "-- Select a backup --":
                 if st.button("Restore Selected Session"):
-                    st.session_state.master_info = backup_options[selected_backup]['info']
+                    st.session_state.master_info  = backup_options[selected_backup]['info']
                     st.session_state.process_list = backup_options[selected_backup]['list']
-                    st.session_state.is_evaluating = True
-                    st.session_state.stop_backup = False
+                    st.session_state.is_evaluating         = True
+                    st.session_state.stop_backup           = False
                     st.session_state.download_action_status = None
-
-                    st.session_state.nav_index = len(st.session_state.process_list) - 1
+                    st.session_state.nav_index    = len(st.session_state.process_list) - 1
                     st.session_state.is_inserting = True
                     sync_form_with_state()
                     st.rerun()
-        st.write("---")
+            st.write("---")
 
     sub_col1, sub_col2 = st.columns(2)
     with sub_col1:
@@ -498,7 +762,7 @@ with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=not st.sessi
             if not supplier_input or not evaluator_input:
                 st.error("🚨 Please enter both Supplier Name and Evaluator Name.")
             else:
-                st.session_state.master_info["supplier"] = supplier_input
+                st.session_state.master_info["supplier"]  = supplier_input
                 st.session_state.master_info["evaluator"] = evaluator_input
                 st.session_state.is_evaluating = True
                 save_temp_backup()
@@ -524,12 +788,11 @@ if st.session_state.is_evaluating:
 
         template_df = pd.DataFrame({
             "Process Name": ["Assembly 1", "Testing"],
-            "Description": ["Engine assembly", "Final check"],
-            "Type": ["MH", "P"],
-            "Score": [4, 5],
-            "Remark": ["Routine check", "Critical step"]
+            "Description":  ["Engine assembly", "Final check"],
+            "Type":         ["MH", "P"],
+            "Score":        [4, 5],
+            "Remark":       ["Routine check", "Critical step"]
         })
-
         towrite = io.BytesIO()
         template_df.to_excel(towrite, index=False, engine='openpyxl')
         towrite.seek(0)
@@ -543,11 +806,10 @@ if st.session_state.is_evaluating:
         )
 
         uploaded_file = st.file_uploader("Upload filled Excel template", type=["xlsx", "xls"])
-
         if uploaded_file is not None:
             if st.button("🚀 Upload & Apply Data"):
                 try:
-                    df_uploaded = pd.read_excel(uploaded_file)
+                    df_uploaded   = pd.read_excel(uploaded_file)
                     required_cols = ["Description", "Type", "Score"]
                     if not all(col in df_uploaded.columns for col in required_cols):
                         st.error(
@@ -557,40 +819,35 @@ if st.session_state.is_evaluating:
                     else:
                         added_count = 0
                         skipped_rows = []
-
                         for row_idx, row in df_uploaded.iterrows():
                             desc = row.get("Description")
                             if pd.isna(desc) or str(desc).strip() == "":
                                 continue
-
                             raw_type = str(row.get("Type", "")).strip().upper()
                             if raw_type not in VALID_TYPES:
                                 skipped_rows.append(
                                     f"Row {row_idx + 2}: Type '{row.get('Type')}' is invalid (MH/P/WIP only)"
                                 )
                                 continue
-
                             try:
                                 raw_score = int(row.get("Score", 0))
                             except (ValueError, TypeError):
                                 raw_score = 0
-
                             if raw_score not in VALID_SCORES:
                                 skipped_rows.append(
                                     f"Row {row_idx + 2}: Score '{row.get('Score')}' is invalid (1~5 only)"
                                 )
                                 continue
-
                             new_process = {
-                                "Supplier": st.session_state.master_info["supplier"],
-                                "Evaluator": st.session_state.master_info["evaluator"],
-                                "No.": 0,
-                                "Process": str(row.get("Process Name", "N/A")) if pd.notna(row.get("Process Name")) else "N/A",
-                                "Type": raw_type,
+                                "Supplier":    st.session_state.master_info["supplier"],
+                                "Evaluator":   st.session_state.master_info["evaluator"],
+                                "No.":         0,
+                                "Process":     str(row.get("Process Name", "N/A")) if pd.notna(row.get("Process Name")) else "N/A",
+                                "Type":        raw_type,
                                 "Description": str(desc).strip(),
-                                "PAMI": raw_score,
-                                "Remark": str(row.get("Remark", "")) if pd.notna(row.get("Remark")) else "",
-                                "Time": datetime.now().strftime("%H:%M:%S")
+                                "PAMI":        raw_score,
+                                "Remark":      str(row.get("Remark", "")) if pd.notna(row.get("Remark")) else "",
+                                "Time":        datetime.now().strftime("%H:%M:%S")
                             }
                             st.session_state.process_list.append(new_process)
                             added_count += 1
@@ -599,61 +856,55 @@ if st.session_state.is_evaluating:
                             reindex_processes()
                             save_temp_backup()
                             st.session_state.is_inserting = True
-                            st.session_state.nav_index = len(st.session_state.process_list) - 1
+                            st.session_state.nav_index    = len(st.session_state.process_list) - 1
                             sync_form_with_state()
                             st.success(f"✅ {added_count}개의 프로세스가 성공적으로 일괄 등록되었습니다!")
-
                         if skipped_rows:
                             st.warning(
                                 f"⚠️ {len(skipped_rows)}개 행이 유효하지 않아 건너뛰었습니다:\n\n"
                                 + "\n".join(skipped_rows)
                             )
-
                         if added_count == 0 and not skipped_rows:
                             st.warning("⚠️ 등록할 유효한 프로세스 데이터가 엑셀에 없습니다.")
-
                         if added_count > 0:
                             time.sleep(1)
                             st.rerun()
-
                 except Exception as e:
                     st.error(f"🚨 파일을 읽는 중 오류가 발생했습니다: {e}")
 
     st.write("---")
 
     # =====================================================================
-    # [UPDATE] 네비게이션 버튼 - 순환 방식
+    # 네비게이션 버튼 - 순환 방식
     # =====================================================================
     if st.session_state.process_list or st.session_state.is_inserting:
         nav_c1, nav_c2, nav_c3 = st.columns(3)
-
-        prev_disabled = len(st.session_state.process_list) == 0
         with nav_c1:
-            st.button("⬅️ Prev", on_click=nav_prev, disabled=prev_disabled, use_container_width=True)
-
-        next_disabled = st.session_state.is_inserting or len(st.session_state.process_list) == 0
+            st.button("⬅️ Prev", on_click=nav_prev,
+                      disabled=len(st.session_state.process_list) == 0,
+                      use_container_width=True)
         with nav_c2:
-            st.button("Next ➡️", on_click=nav_next, disabled=next_disabled, use_container_width=True)
-
-        new_disabled = st.session_state.is_inserting
+            st.button("Next ➡️", on_click=nav_next,
+                      disabled=st.session_state.is_inserting or len(st.session_state.process_list) == 0,
+                      use_container_width=True)
         with nav_c3:
-            st.button("➕ New", on_click=nav_new, disabled=new_disabled, use_container_width=True)
-
+            st.button("➕ New", on_click=nav_new,
+                      disabled=st.session_state.is_inserting,
+                      use_container_width=True)
         st.write("")
 
         if st.session_state.is_inserting:
-            target_no = st.session_state.nav_index + 2
             st.markdown(
-                f"<div style='text-align: center; font-weight: bold; color: #0d6efd;'>"
-                f"✨ Add New Process as No. {target_no}</div>",
+                f"<div style='text-align:center; font-weight:bold; color:#0d6efd;'>"
+                f"✨ Add New Process as No. {st.session_state.nav_index + 2}</div>",
                 unsafe_allow_html=True
             )
         else:
-            total = len(st.session_state.process_list)
+            total       = len(st.session_state.process_list)
             current_num = st.session_state.nav_index + 1
             current_desc = st.session_state.process_list[st.session_state.nav_index].get('Description', '')
             st.markdown(
-                f"<div style='text-align: center; font-weight: bold; color: #198754;'>"
+                f"<div style='text-align:center; font-weight:bold; color:#198754;'>"
                 f"✏️ Editing No. {current_num} / {total} : {current_desc}</div>",
                 unsafe_allow_html=True
             )
@@ -663,26 +914,17 @@ if st.session_state.is_evaluating:
     # =====================================================================
     with st.form("pami_input_form", clear_on_submit=False):
         st.markdown("**📝 Step 2: PAMI Input per Process**")
-
         if st.session_state.pami_form_error:
             st.error(st.session_state.pami_form_error)
-
         st.text_input("Process Name (Optional)", key="p_name_input")
         st.text_input("Description - Required*", placeholder="Enter details...", key="p_desc_input")
         st.write("Type - Required*")
-        st.radio(
-            "Type", options=["MH", "P", "WIP"],
-            index=None, horizontal=True,
-            label_visibility="collapsed", key="p_type_input"
-        )
+        st.radio("Type", options=["MH", "P", "WIP"], index=None, horizontal=True,
+                 label_visibility="collapsed", key="p_type_input")
         st.write("Score (1~5) - Required*")
-        st.radio(
-            "Score", options=[1, 2, 3, 4, 5],
-            index=None, horizontal=True,
-            label_visibility="collapsed", key="p_score_input"
-        )
+        st.radio("Score", options=[1, 2, 3, 4, 5], index=None, horizontal=True,
+                 label_visibility="collapsed", key="p_score_input")
         st.text_input("Remark (Optional)", key="p_remark_input")
-
         btn_text = "Save New Process" if st.session_state.is_inserting else "Update Process"
         st.form_submit_button(btn_text, on_click=process_form_submit)
 
@@ -691,14 +933,14 @@ if st.session_state.is_evaluating:
     # =====================================================================
     if st.session_state.process_list or st.session_state.is_inserting:
         act_c1, act_c2 = st.columns(2)
-
-        cancel_disabled = (not st.session_state.is_inserting) or (len(st.session_state.process_list) == 0)
         with act_c1:
-            st.button("🚫 Cancel", on_click=nav_cancel, disabled=cancel_disabled, use_container_width=True)
-
-        del_disabled = st.session_state.is_inserting
+            st.button("🚫 Cancel", on_click=nav_cancel,
+                      disabled=(not st.session_state.is_inserting) or (len(st.session_state.process_list) == 0),
+                      use_container_width=True)
         with act_c2:
-            st.button("🗑️ Delete", on_click=set_delete_confirm, disabled=del_disabled, use_container_width=True)
+            st.button("🗑️ Delete", on_click=set_delete_confirm,
+                      disabled=st.session_state.is_inserting,
+                      use_container_width=True)
 
         if st.session_state.show_delete_confirm and not st.session_state.is_inserting:
             st.error(f"⚠️ Are you sure you want to delete Process **No. {st.session_state.nav_index + 1}**?")
@@ -715,11 +957,11 @@ if st.session_state.is_evaluating:
         st.write("---")
         st.markdown("**📊 Evaluation Summary**")
 
-        df = pd.DataFrame(st.session_state.process_list)
+        df   = pd.DataFrame(st.session_state.process_list)
         cols = ["Supplier", "Evaluator", "No.", "Process", "Type", "Description", "PAMI", "Remark", "Time"]
-        df = df[cols]
+        df   = df[cols]
 
-        oami_avg = df["PAMI"].mean()
+        oami_avg        = df["PAMI"].mean()
         total_processes = len(df)
 
         m_col1, m_col2 = st.columns(2)
@@ -747,52 +989,32 @@ if st.session_state.is_evaluating:
                 "💡 **Tip:** Click the button below to copy the text, "
                 "or use the 'Open Outlook Mail App' button to auto-fill your email body."
             )
-
-            safe_raw_text = json.dumps(raw_text)
-
+            safe_raw_text  = json.dumps(raw_text)
             copy_text_html = f"""
-            <button id="btn-copy-text" onclick="copyToClipboard()" style="width: 100%; height: 40px; background-color: #0d6efd; color: white; border: none; border-radius: 5px; font-weight: bold; font-size: 14px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <button id="btn-copy-text" onclick="copyToClipboard()" style="width:100%; height:40px; background-color:#0d6efd; color:white; border:none; border-radius:5px; font-weight:bold; font-size:14px; cursor:pointer; box-shadow:0 2px 4px rgba(0,0,0,0.1);">
                 📋 Copy Text for Outlook
             </button>
             <script>
             function copyToClipboard() {{
                 var textToCopy = {safe_raw_text};
                 if (navigator.clipboard && window.isSecureContext) {{
-                    navigator.clipboard.writeText(textToCopy).then(function() {{
-                        showSuccess();
-                    }}).catch(function() {{
-                        fallbackCopyTextToClipboard(textToCopy);
-                    }});
-                }} else {{
-                    fallbackCopyTextToClipboard(textToCopy);
-                }}
-                function fallbackCopyTextToClipboard(text) {{
-                    var textArea = document.createElement("textarea");
-                    textArea.value = text;
-                    textArea.style.position = "fixed";
-                    textArea.style.top = "0";
-                    textArea.style.left = "0";
-                    textArea.style.opacity = "0";
-                    document.body.appendChild(textArea);
-                    textArea.focus();
-                    textArea.select();
-                    try {{
-                        var successful = document.execCommand('copy');
-                        if(successful) {{ showSuccess(); }}
-                        else {{ alert("Copy failed. Please copy manually."); }}
-                    }} catch (err) {{
-                        alert("Copy failed. Please copy manually.");
-                    }}
-                    document.body.removeChild(textArea);
+                    navigator.clipboard.writeText(textToCopy).then(showSuccess).catch(function() {{ fallbackCopy(textToCopy); }});
+                }} else {{ fallbackCopy(textToCopy); }}
+                function fallbackCopy(text) {{
+                    var ta = document.createElement("textarea");
+                    ta.value = text;
+                    ta.style.cssText = "position:fixed;top:0;left:0;opacity:0;";
+                    document.body.appendChild(ta);
+                    ta.focus(); ta.select();
+                    try {{ document.execCommand('copy') ? showSuccess() : alert("Copy failed."); }}
+                    catch(e) {{ alert("Copy failed."); }}
+                    document.body.removeChild(ta);
                 }}
                 function showSuccess() {{
                     var btn = document.getElementById('btn-copy-text');
                     btn.innerText = '✅ Copied!';
                     btn.style.backgroundColor = '#198754';
-                    setTimeout(function(){{
-                        btn.innerText = '📋 Copy Text for Outlook';
-                        btn.style.backgroundColor = '#0d6efd';
-                    }}, 2000);
+                    setTimeout(function() {{ btn.innerText='📋 Copy Text for Outlook'; btn.style.backgroundColor='#0d6efd'; }}, 2000);
                 }}
             }}
             </script>
@@ -806,13 +1028,11 @@ if st.session_state.is_evaluating:
                 "**Note:** Tables cannot be auto-filled in the Mail App. "
                 "You must copy and paste this table manually."
             )
-
             export_cols = ["No.", "Process", "Type", "Description", "PAMI", "Remark", "Time"]
-            html_table = df[export_cols].to_html(index=False).replace(
+            html_table  = df[export_cols].to_html(index=False).replace(
                 '<table border="1" class="dataframe">',
-                '<table border="1" cellpadding="8" style="border-collapse: collapse; text-align: left; font-family: Arial; width: 100%;">'
+                '<table border="1" cellpadding="8" style="border-collapse:collapse; text-align:left; font-family:Arial; width:100%;">'
             )
-
             email_html = (
                 f"<div id='pc-email-content' style='background:#f8f9fa; padding:15px;'>"
                 f"<strong>OAMI Report: {st.session_state.master_info['supplier']}</strong><br><br>"
@@ -820,80 +1040,59 @@ if st.session_state.is_evaluating:
                 f"<strong>Average OAMI: <span style='color:blue;'>{oami_avg:.2f} / 5.0</span></strong>"
                 f"<br><br>{html_table}</div>"
             )
-
             copy_table_html = f"""
-            <button id="btn-copy-table" onclick='copyPCTable()' style='width:100%; height:40px; background-color:#28a745; color:white; border:none; border-radius:5px; font-weight:bold; font-size:14px; cursor:pointer; margin-bottom:10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
+            <button id="btn-copy-table" onclick='copyPCTable()' style='width:100%; height:40px; background-color:#28a745; color:white; border:none; border-radius:5px; font-weight:bold; font-size:14px; cursor:pointer; margin-bottom:10px; box-shadow:0 2px 4px rgba(0,0,0,0.1);'>
                 📋 Copy Table for Outlook
             </button>
             <script>
-            function copyPCTable(){{
-                var body = document.getElementById('pc-email-content');
+            function copyPCTable() {{
+                var body  = document.getElementById('pc-email-content');
                 var range = document.createRange();
                 range.selectNode(body);
                 window.getSelection().removeAllRanges();
                 window.getSelection().addRange(range);
-                try{{
+                try {{
                     document.execCommand('copy');
                     var btn = document.getElementById('btn-copy-table');
-                    btn.innerText='✅ Copied!';
-                    btn.style.backgroundColor='#198754';
-                    setTimeout(function(){{
-                        btn.innerText='📋 Copy Table for Outlook';
-                        btn.style.backgroundColor='#28a745';
-                    }}, 2000);
-                }}catch(e){{
-                    alert('Copy failed.');
-                }}
+                    btn.innerText='✅ Copied!'; btn.style.backgroundColor='#198754';
+                    setTimeout(function() {{ btn.innerText='📋 Copy Table for Outlook'; btn.style.backgroundColor='#28a745'; }}, 2000);
+                }} catch(e) {{ alert('Copy failed.'); }}
                 window.getSelection().removeAllRanges();
             }}
             </script>
             """
-            styled_pc_html = f"""
-            <div style="max-height: 450px; overflow-y: auto;">
-            {copy_table_html}
-            {email_html}
-            </div>
-            """
-            st.html(styled_pc_html)
+            st.html(f"<div style='max-height:450px; overflow-y:auto;'>{copy_table_html}{email_html}</div>")
 
         st.write("")
 
-        subject = (
-            f"OAMI Evaluation - {st.session_state.master_info['supplier']} "
-            f"OAMI - {oami_avg:.2f}"
-        )
+        subject      = f"OAMI Evaluation - {st.session_state.master_info['supplier']} OAMI - {oami_avg:.2f}"
         body_encoded = urllib.parse.quote(raw_text)
-        mail_link = f"mailto:?subject={urllib.parse.quote(subject)}&body={body_encoded}"
+        mail_link    = f"mailto:?subject={urllib.parse.quote(subject)}&body={body_encoded}"
         st.markdown(
             f'<a href="{mail_link}" target="_blank" style="text-decoration:none;">'
-            f'<button style="width:100%; height:45px; border-radius:5px; border:none; '
-            f'cursor:pointer; background-color:#0078D4; color:white; font-weight:bold; font-size:14px;">'
+            f'<button style="width:100%; height:45px; border-radius:5px; border:none; cursor:pointer; background-color:#0078D4; color:white; font-weight:bold; font-size:14px;">'
             f'📨 Open Outlook Mail App (Auto-fill Text)</button></a>',
             unsafe_allow_html=True
         )
 
         st.write("---")
-
         st.warning(
             "⚠️ **Warning:** System backups are temporary and can be deleted at any time. "
             "**You must download the CSV file to keep your data permanently.**"
         )
-
         st.checkbox(
             "🗑️ Delete system backup file after download (Recommended for security)",
             value=True,
             key="delete_backup_checkbox"
         )
 
-        summary_line = (
+        summary_line  = (
             f"# Supplier: {st.session_state.master_info['supplier']} | "
             f"Evaluator: {st.session_state.master_info['evaluator']} | "
             f"Processes: {total_processes} | Avg OAMI: {oami_avg:.2f}\n"
         )
-        export_df = df[["No.", "Process", "Type", "Description", "PAMI", "Remark", "Time"]]
-
-        csv_string = summary_line + export_df.to_csv(index=False)
-        csv_data_bytes = csv_string.encode('utf-8-sig')
+        export_df     = df[["No.", "Process", "Type", "Description", "PAMI", "Remark", "Time"]]
+        csv_data_bytes = (summary_line + export_df.to_csv(index=False)).encode('utf-8-sig')
 
         st.download_button(
             label="📥 Download CSV Backup",
@@ -919,7 +1118,7 @@ if st.session_state.is_evaluating:
             col_yes, col_no = st.columns(2)
             with col_yes:
                 if st.button("✔️ Yes, Clear Data", use_container_width=True):
-                    supplier = st.session_state.master_info.get("supplier", "")
+                    supplier  = st.session_state.master_info.get("supplier", "")
                     evaluator = st.session_state.master_info.get("evaluator", "")
                     if supplier and evaluator:
                         fname = get_backup_filename(supplier, evaluator)
@@ -929,26 +1128,13 @@ if st.session_state.is_evaluating:
                                 os.remove(fname)
                             except Exception as e:
                                 logger.warning(f"초기화 중 백업 삭제 실패: {e}")
-
-                    st.session_state.master_info = {"supplier": "", "evaluator": ""}
-                    st.session_state.process_list = []
-                    st.session_state.is_evaluating = False
-                    st.session_state.stop_backup = False
-                    st.session_state.download_action_status = None
-                    st.session_state.show_confirm_clear = False
-
-                    st.session_state.nav_index = -1
-                    st.session_state.is_inserting = True
-                    st.session_state.show_delete_confirm = False
-
-                    keys_to_clear = [
-                        'p_name_input', 'p_desc_input', 'p_type_input',
-                        'p_score_input', 'p_remark_input'
-                    ]
-                    for key in keys_to_clear:
+                    for key in ['master_info', 'process_list', 'is_evaluating', 'stop_backup',
+                                'download_action_status', 'show_confirm_clear', 'nav_index',
+                                'is_inserting', 'show_delete_confirm',
+                                'p_name_input', 'p_desc_input', 'p_type_input',
+                                'p_score_input', 'p_remark_input', '_sync_done']:
                         if key in st.session_state:
                             del st.session_state[key]
-
                     st.rerun()
             with col_no:
                 if st.button("❌ No, Cancel", use_container_width=True):
@@ -957,17 +1143,14 @@ if st.session_state.is_evaluating:
 
 # =====================================================================
 # Footer - README 링크 (앱 최하단, 항상 표시)
-# 평가 화면 여부와 관계없이 모든 페이지에서 노출
 # =====================================================================
 st.markdown("---")
 st.markdown(
-    "<div style='text-align: center; color: #aaa; font-size: 13px; padding: 4px 0 8px 0;'>"
+    "<div style='text-align:center; color:#aaa; font-size:13px; padding:4px 0 8px 0;'>"
     "📖 How to use &nbsp;→&nbsp; "
-    "<a href='https://github.com/kim2140/oami#readme' target='_blank' "
-    "style='color: #0d6efd; text-decoration: none;'>English</a>"
+    "<a href='https://github.com/kim2140/oami#readme' target='_blank' style='color:#0d6efd; text-decoration:none;'>English</a>"
     " &nbsp;/&nbsp; "
-    "<a href='https://github.com/kim2140/oami/blob/main/README_KO.md' target='_blank' "
-    "style='color: #0d6efd; text-decoration: none;'>한국어</a>"
+    "<a href='https://github.com/kim2140/oami/blob/main/README_KO.md' target='_blank' style='color:#0d6efd; text-decoration:none;'>한국어</a>"
     "</div>",
     unsafe_allow_html=True
 )
