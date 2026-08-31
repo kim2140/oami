@@ -1,8 +1,11 @@
 # =============================================================================
 # Supplier OAMI Evaluation App
-# Version: 2.3.0
+# Version: 2.3.1
 #
 # [버전 히스토리 - 최신순]
+#   v2.3.1 - 글자 크기 선택 UI를 라디오 버튼 → 크기별 아이콘 버튼(A/A/A)으로 변경
+#            (버튼 안 "A" 자체를 작게/중간/크게 실제 크기로 표시, 선택된 크기는
+#             색상(primary) + 체크(✓) 표시로 강조)
 #   v2.3.0 - 화면 UI 텍스트(라벨/버튼/안내·경고·에러 메시지) 영어로 변경
 #            + 글자 크기 선택 기능(Small/Medium/Large) 추가 (메인 화면 최상단)
 #   v2.2.1 - Summary/Export 컬럼 순서 변경 (No. > Process > Description > Type > PAMI > Remark > Time)
@@ -15,11 +18,17 @@
 # 프로세스별 Type(MH/P/WIP) 및 PAMI 점수(1~5)를 입력하고
 # Google Sheets(클라우드) + 서버 로컬 파일에 이중 백업.
 #
+# [v2.3.1 변경사항 - 글자 크기 UI 개선]
+#   - 글자 크기 선택을 라디오 버튼에서 3개의 아이콘 버튼(Small/Medium/Large)으로 변경
+#   - 버튼 안의 "A" 글자 크기 자체를 작게/중간/크게 다르게 표시해서
+#     텍스트 설명 없이도 크기 차이를 한눈에 알 수 있도록 구성
+#   - 현재 선택된 크기는 버튼 색상(primary 강조색) + 체크(✓) 표시로 명확히 구분
+#
 # [v2.3.0 변경사항 - UI 영어화 + 글자 크기 선택]
 #   - 화면에 보이는 라벨/버튼/안내·경고·에러 메시지를 영어로 변경
 #     (내부 로그 메시지(logger.*)와 코드 주석은 요청에 따라 한글 그대로 유지)
 #   - "글자가 작아서 안 보인다"는 피드백에 따라, 메인 화면 최상단에
-#     Small / Medium / Large 글자 크기 라디오 버튼 추가
+#     Small / Medium / Large 글자 크기 선택 UI 추가
 #     → 선택 즉시 앱 전체(라벨/버튼/표/안내문 등)에 CSS로 일괄 적용, 기본값 Medium
 #
 # [v2.2.0 변경사항 - Fix 1 재설계]
@@ -78,8 +87,12 @@ st.markdown("### 📝 Supplier OAMI Evaluation App")
 
 # =====================================================================
 # [v2.3.0] 글자 크기 선택 (Small / Medium / Large)
+# [v2.3.1] 라디오 버튼 → 크기별 아이콘 버튼(A/A/A)으로 변경
+#   - 버튼 안의 "A" 글자 크기 자체를 작게/중간/크게 실제로 다르게 표시해서
+#     별도 설명 없이도 크기 차이가 한눈에 보이도록 구성
+#   - 현재 선택된 크기는 type="primary"(강조 색상) + 체크(✓) 표시로 명확히 구분
 # "글자가 작아서 안 보인다"는 피드백에 따라 추가.
-# 메인 화면 최상단에 라디오 버튼으로 배치하고, 선택값은 세션 동안 유지되며
+# 메인 화면 최상단에 배치하고, 선택값은 세션 동안 유지되며
 # 앱 전체 텍스트(라벨/버튼/표/안내문 등)에 CSS로 즉시 적용된다. 기본값은 Medium.
 # =====================================================================
 FONT_SIZE_PRESETS = {
@@ -87,6 +100,17 @@ FONT_SIZE_PRESETS = {
     "Medium": "16px",
     "Large":  "20px",
 }
+
+# [v2.3.1] 버튼 안 "A" 아이콘 자체의 크기 — 전역 글자 크기(FONT_SIZE_PRESETS)와는
+# 별개로, 항상 작게/중간/크게 뚜렷한 크기 차이를 보여주기 위한 고정 값
+FONT_ICON_SIZES = {
+    "Small":  "13px",
+    "Medium": "18px",
+    "Large":  "26px",
+}
+
+if "font_size_choice" not in st.session_state:
+    st.session_state.font_size_choice = "Medium"
 
 
 def apply_font_size(size_label):
@@ -121,13 +145,53 @@ def apply_font_size(size_label):
     """, unsafe_allow_html=True)
 
 
-st.radio(
-    "🔠 Text Size",
-    options=list(FONT_SIZE_PRESETS.keys()),
-    index=1,  # Medium 기본값
-    horizontal=True,
-    key="font_size_choice"
-)
+def render_font_size_buttons():
+    """
+    [v2.3.1] Small/Medium/Large 아이콘 버튼 렌더링.
+    - 버튼 라벨의 "A" 글자 크기를 실제로 다르게(13px/18px/26px) 표시하여
+      텍스트 설명 없이도 크기 차이를 바로 알 수 있게 함
+    - 현재 선택된 버튼은 type="primary"로 색상 강조 + "✓" 체크 표시
+    - Streamlit의 key="..." 위젯은 컨테이너에 자동으로 "st-key-<key>" 클래스가
+      붙으므로, 이를 이용해 버튼별로 다른 font-size를 CSS로 지정한다.
+    """
+    st.markdown(f"""
+    <style>
+    .st-key-fs_btn_small button p,  .st-key-fs_btn_small button div  {{ font-size: {FONT_ICON_SIZES['Small']}  !important; }}
+    .st-key-fs_btn_medium button p, .st-key-fs_btn_medium button div {{ font-size: {FONT_ICON_SIZES['Medium']} !important; }}
+    .st-key-fs_btn_large button p,  .st-key-fs_btn_large button div  {{ font-size: {FONT_ICON_SIZES['Large']}  !important; }}
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.write("**🔠 Text Size**")
+    current = st.session_state.font_size_choice
+    fs_c1, fs_c2, fs_c3 = st.columns(3)
+
+    with fs_c1:
+        if st.button("✓ A" if current == "Small" else "A", key="fs_btn_small",
+                     type="primary" if current == "Small" else "secondary",
+                     use_container_width=True):
+            st.session_state.font_size_choice = "Small"
+            st.rerun()
+        st.markdown("<div style='text-align:center;font-size:12px;color:#888;'>Small</div>", unsafe_allow_html=True)
+
+    with fs_c2:
+        if st.button("✓ A" if current == "Medium" else "A", key="fs_btn_medium",
+                     type="primary" if current == "Medium" else "secondary",
+                     use_container_width=True):
+            st.session_state.font_size_choice = "Medium"
+            st.rerun()
+        st.markdown("<div style='text-align:center;font-size:12px;color:#888;'>Medium</div>", unsafe_allow_html=True)
+
+    with fs_c3:
+        if st.button("✓ A" if current == "Large" else "A", key="fs_btn_large",
+                     type="primary" if current == "Large" else "secondary",
+                     use_container_width=True):
+            st.session_state.font_size_choice = "Large"
+            st.rerun()
+        st.markdown("<div style='text-align:center;font-size:12px;color:#888;'>Large</div>", unsafe_allow_html=True)
+
+
+render_font_size_buttons()
 apply_font_size(st.session_state.font_size_choice)
 st.write("")
 
