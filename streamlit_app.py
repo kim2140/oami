@@ -1,8 +1,13 @@
 # =============================================================================
 # Supplier OAMI Evaluation App
-# Version: 2.7.0
+# Version: 2.8.0
 #
 # [버전 히스토리 - 최신순]
+#   v2.8.0 - "Description 프리셋 셀렉트가 안 된다"는 피드백에 따라 방식 변경:
+#            자동 적용(on_change) 대신 드롭다운에서 고르고 "Insert into
+#            Description" 버튼을 눌러야 반영되는 2단계 방식으로 바꿔 동작을
+#            더 명확하게 함. 프리셋 목록도 실제 요청하신 Moving/Feeding/
+#            Assembly/Welding으로 교체.
 #   v2.7.0 - Description 입력칸에 미리 정의된(predefined) 문구를 고를 수 있는
 #            프리셋 드롭다운 추가. 프리셋을 고르면 Description 칸이 그
 #            문구로 채워지고, 이어서 타이핑해 내용을 덧붙이거나 전부 지우고
@@ -35,6 +40,18 @@
 # 공급업체 OAMI(Operation Assessment & Management Index) 평가 앱.
 # 프로세스별 Type(MH/P/WIP) 및 PAMI 점수(1~5)를 입력하고
 # Google Sheets(클라우드) + 서버 로컬 파일에 이중 백업.
+#
+# [v2.8.0 변경사항 - Description 프리셋 동작 방식 개선]
+#   - "테스트 해봤는데 셀렉트가 안 된다"는 피드백에 따라 추가.
+#   - 추정 원인: 이전 버전은 드롭다운에서 고르는 즉시(on_change) 자동으로
+#     Description에 반영하고, 드롭다운 자체는 다시 "-- Select a preset --"
+#     안내 문구로 리셋했음. 방금 고른 항목이 화면에서 바로 사라져 보이기
+#     때문에, 실제로는 반영이 됐어도 "선택이 안 먹힌다"고 오해하기 쉬웠음.
+#   - 개선: 드롭다운(고른 값 그대로 유지) + "➕ Insert" 버튼의 2단계 방식으로
+#     변경. 버튼을 눌러야만 Description 칸에 반영되므로, 언제 무엇이
+#     적용됐는지 훨씬 명확함.
+#   - Description 프리셋 목록을 예시 문구 대신 실제 요청하신 내용
+#     (Moving / Feeding / Assembly / Welding)으로 교체.
 #
 # [v2.7.0 변경사항 - Description 프리셋 추가]
 #   - "Description에 predefined 내용을 먼저 넣어두고, 그 뒤에 추가로 입력할
@@ -287,22 +304,16 @@ VALID_SCORES = {1, 2, 3, 4, 5}
 # [v2.7.0] Description 프리셋(predefined) 목록
 # "Description 칸에 미리 정의된 문구를 먼저 넣어두고, 그 뒤에 이어서 추가로
 # 입력할 수 있게 해달라"는 요청에 따라 추가.
+# [v2.8.0] 목록을 실제 요청하신 문구(Moving/Feeding/Assembly/Welding)로 교체.
 #
-# ⚠️ 아래 목록은 실제 현장 문구를 몰라서 넣어둔 예시(placeholder)입니다.
-#    회사에서 자주 쓰는 실제 Description 문구로 자유롭게 바꿔서 쓰세요.
-#    (한 줄에 문구 하나씩, 따옴표 안에 작성 → 쉼표로 구분)
+# 목록은 아래에 한 줄에 하나씩, 따옴표 안에 적고 쉼표로 구분하면 됩니다.
+# 필요하면 자유롭게 추가/삭제/수정해서 쓰세요.
 # =====================================================================
 DESCRIPTION_PRESETS = [
-    "Process performed according to standard work instructions",
-    "Operator following safety procedures correctly",
-    "Equipment / tooling in good working condition",
-    "Quality checkpoint observed and passed",
-    "Material handling and storage meets requirements",
-    "Workplace organization (5S) maintained",
-    "Documentation and records properly maintained",
-    "Cycle time within target",
-    "Non-conformance identified during observation",
-    "No issues observed during this process",
+    "Moving",
+    "Feeding",
+    "Assembly",
+    "Welding",
 ]
 DESCRIPTION_PRESET_PLACEHOLDER = "-- Select a preset (optional) --"
 
@@ -919,18 +930,25 @@ def delete_current_process():
 
 # =====================================================================
 # [v2.7.0] Description 프리셋 적용
-# 프리셋 선택 드롭다운은 st.form 밖에 있어야 고르는 즉시 화면이 갱신되고
+# [v2.8.0] "셀렉트가 안 된다"는 피드백에 따라 방식 변경.
+# 이전에는 드롭다운에서 고르는 즉시(on_change) 자동으로 적용하고 드롭다운을
+# 다시 안내 문구로 리셋했는데, 이 "자동 리셋" 때문에 방금 고른 선택지가
+# 화면에서 바로 사라져 보여 "선택이 안 먹힌다"고 오해하기 쉬웠던 것으로 보임.
+# 지금은 ① 드롭다운에서 프리셋을 고르고 ② "Insert into Description" 버튼을
+# 눌러야 반영되는 2단계 방식으로 변경. 드롭다운은 고른 값을 그대로 보여주고
+# (자동으로 사라지지 않음), 버튼을 눌렀을 때만 Description 칸에 반영되므로
+# 지금 뭘 골랐는지, 언제 적용됐는지가 훨씬 명확함.
+# 프리셋 선택 UI는 st.form 밖에 있어야 누르는 즉시 화면이 갱신되고
 # Description 칸에 반영된다 (form 안의 위젯은 제출 전까지 값이 반영되지
-# 않으므로, 프리셋 드롭다운은 폼 바깥에 둔다).
+# 않으므로, 폼 바깥에 둔다).
 # =====================================================================
-def apply_description_preset():
-    """프리셋을 고르면 Description 입력칸을 그 문구로 채운다.
-    사용자는 이후 이어서 타이핑하거나, 전부 지우고 새로 쓸 수 있다."""
+def insert_description_preset():
+    """'Insert into Description' 버튼을 누르면, 현재 드롭다운에서 고른
+    프리셋으로 Description 입력칸을 채운다. 사용자는 이후 이어서 타이핑
+    하거나, 전부 지우고 새로 쓸 수 있다."""
     selected = st.session_state.get("desc_preset_select", DESCRIPTION_PRESET_PLACEHOLDER)
     if selected and selected != DESCRIPTION_PRESET_PLACEHOLDER:
         st.session_state.p_desc_input = selected
-        # 같은 프리셋을 나중에 다시 고를 수 있도록 드롭다운은 안내 문구로 리셋
-        st.session_state.desc_preset_select = DESCRIPTION_PRESET_PLACEHOLDER
 
 
 def process_form_submit():
@@ -1229,17 +1247,24 @@ if st.session_state.is_evaluating:
 
     # =====================================================================
     # [v2.7.0] Description 프리셋 선택
-    # st.form 밖에 있어야 선택 즉시 반영되므로, 폼 시작 전에 배치한다.
-    # 프리셋을 고르면 아래 Description 칸이 그 문구로 채워지고, 이어서
-    # 타이핑해서 내용을 덧붙이거나, 전부 지우고 새로 쓸 수도 있다.
+    # [v2.8.0] 드롭다운 + "Insert into Description" 버튼의 2단계 방식으로 변경
+    # (자동 적용 방식에서 "선택이 안 먹힌다"는 혼란이 있어서 명시적인 버튼
+    # 클릭으로 바꿈 — 자세한 이유는 insert_description_preset() 함수 주석 참고)
+    # st.form 밖에 있어야 버튼을 누르는 즉시 반영되므로, 폼 시작 전에 배치한다.
     # =====================================================================
-    st.selectbox(
-        "📋 Description Preset (optional)",
-        options=[DESCRIPTION_PRESET_PLACEHOLDER] + DESCRIPTION_PRESETS,
-        key="desc_preset_select",
-        on_change=apply_description_preset,
-        help="Pick a preset to auto-fill the Description field below, then keep typing to add more, or clear it and write your own."
-    )
+    desc_preset_c1, desc_preset_c2 = st.columns([3, 1])
+    with desc_preset_c1:
+        st.selectbox(
+            "📋 Description Preset (optional)",
+            options=[DESCRIPTION_PRESET_PLACEHOLDER] + DESCRIPTION_PRESETS,
+            key="desc_preset_select",
+            help="Pick a preset below, then click 'Insert' to fill the Description field. "
+                 "You can keep typing after it, or clear it and write your own."
+        )
+    with desc_preset_c2:
+        st.write("")  # 라벨 높이만큼 살짝 내려서 버튼과 드롭다운 높이를 맞춤
+        st.button("➕ Insert", key="btn_insert_preset", on_click=insert_description_preset,
+                   use_container_width=True)
 
     # =====================================================================
     # PAMI 입력 폼
