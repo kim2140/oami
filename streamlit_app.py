@@ -1,8 +1,13 @@
 # =============================================================================
 # Supplier OAMI Evaluation App
-# Version: 2.3.1
+# Version: 2.4.0
 #
 # [버전 히스토리 - 최신순]
+#   v2.4.0 - "인터넷 안 되면 앱이 멈춘다" 문제 해결: 인터넷 연결 여부를 빠르게
+#            사전 확인(최대 2.5초) + 소켓 타임아웃(8초) 적용해 오프라인 시
+#            더 이상 화면이 멈추지 않고 즉시 로컬 저장만으로 계속 진행됨.
+#            화면에 온라인/오프라인 상태 표시 추가. 클라우드 재동기화도
+#            세션당 1회 → 1분 간격 재시도로 변경해 인터넷 복구 시 자동 반영.
 #   v2.3.1 - 글자 크기 선택 UI를 라디오 버튼 → 크기별 아이콘 버튼(A/A/A)으로 변경
 #            (버튼 안 "A" 자체를 작게/중간/크게 실제 크기로 표시, 선택된 크기는
 #             색상(primary) + 체크(✓) 표시로 강조)
@@ -17,6 +22,23 @@
 # 공급업체 OAMI(Operation Assessment & Management Index) 평가 앱.
 # 프로세스별 Type(MH/P/WIP) 및 PAMI 점수(1~5)를 입력하고
 # Google Sheets(클라우드) + 서버 로컬 파일에 이중 백업.
+#
+# [v2.4.0 변경사항 - 오프라인 대응 강화]
+#   - "인터넷이 안 되면 작동을 멈춘다"는 피드백에 따라 추가.
+#   - 문제 원인: 구글 API 호출에 타임아웃이 없어, 인터넷이 끊기면 응답이
+#     올 때까지 화면이 무한 대기(hang)하며 "멈춘 것처럼" 보였음.
+#   - has_internet() 함수로 실제 API를 부르기 전에 www.googleapis.com:443 접속을
+#     짧게(최대 2.5초) 시도해 인터넷 여부를 먼저 판단 → 오프라인이면
+#     클라우드 시도 자체를 건너뛰고 즉시 로컬 저장만 진행 (화면 멈춤 없음)
+#   - socket.setdefaulttimeout()으로 8초 상한을 걸어, 혹시 연결은 되지만
+#     응답이 느린 경우에도 무한 대기하지 않도록 안전장치 추가
+#   - Step 2 화면에 "☁️ Cloud sync: connected" / "📴 No internet connection"
+#     상태 문구를 추가해, 지금 로컬에만 저장 중인지 클라우드까지 저장되고
+#     있는지 사용자가 바로 확인 가능
+#   - 자동 동기화(로컬→클라우드)를 "세션당 1회"에서 "1분 간격으로 재시도"로
+#     변경 → 같은 세션을 계속 켜둔 채로 인터넷이 나중에 복구돼도, 이후
+#     아무 저장 동작(프로세스 추가/수정 등) 한 번만 있으면 자동으로 클라우드에
+#     반영됨 (페이지 새로고침 불필요)
 #
 # [v2.3.1 변경사항 - 글자 크기 UI 개선]
 #   - 글자 크기 선택을 라디오 버튼에서 3개의 아이콘 버튼(Small/Medium/Large)으로 변경
@@ -64,6 +86,7 @@ import glob
 import time
 import logging
 import io
+import socket  # [v2.4.0] 인터넷 연결 여부 확인 및 소켓 타임아웃 설정용
 
 # =====================================================================
 # 로깅 설정
@@ -212,6 +235,39 @@ BACKUP_RETENTION_DAYS = 14
 # 30초를 초과하면 오프라인 중 작업한 것으로 판단
 TS_DIFF_THRESHOLD_SEC = 30
 
+# =====================================================================
+# [v2.4.0] 네트워크 연결 확인 & 타임아웃 설정
+# "인터넷이 안 되면 앱이 멈춘다"는 피드백에 따라 추가.
+# - 소켓 기본 타임아웃을 지정해 구글 API 호출이 무한 대기하지 않도록 방지
+#   (연결은 되는데 응답만 느린 경우에 대한 안전장치)
+# - 실제 클라우드 API를 부르기 전에 www.googleapis.com:443 접속을 짧게 시도해서
+#   인터넷 연결 여부를 먼저 빠르게 판단 (최대 2.5초) → 오프라인이면
+#   클라우드 시도 자체를 건너뛰어 화면이 멈추지 않고 즉시 로컬 저장만 진행
+# - 판단 결과는 10초간 캐시하여, 반복 호출 시마다 매번 다시 확인하느라
+#   생기는 불필요한 지연을 방지
+# =====================================================================
+NETWORK_TIMEOUT_SEC = 8           # 구글 API 호출 자체의 최대 대기 시간(초)
+INTERNET_CHECK_TIMEOUT_SEC = 2.5  # 인터넷 연결 여부 사전 확인 시 최대 대기 시간(초)
+
+socket.setdefaulttimeout(NETWORK_TIMEOUT_SEC)
+
+
+@st.cache_data(ttl=10)
+def has_internet():
+    """
+    인터넷(정확히는 Google API 서버) 연결 여부를 빠르게 확인. 10초간 결과 캐시.
+
+    [v2.4.0] 처음엔 8.8.8.8:53(구글 DNS)로 확인했으나, 회사/보안 네트워크처럼
+    53번(DNS) 포트는 막고 443번(HTTPS)만 허용하는 환경에서는 실제로는 인터넷이
+    되는데도 "오프라인"으로 잘못 판단하는 문제가 있어, 실제로 사용하는 Google
+    Sheets API 서버(www.googleapis.com)의 443번(HTTPS) 포트로 직접 확인하도록 변경.
+    """
+    try:
+        socket.create_connection(("www.googleapis.com", 443), timeout=INTERNET_CHECK_TIMEOUT_SEC)
+        return True
+    except OSError:
+        return False
+
 
 # =====================================================================
 # Google Sheets 헬퍼 함수
@@ -219,6 +275,10 @@ TS_DIFF_THRESHOLD_SEC = 30
 def get_sheets_service():
     """Google Sheets API 서비스 객체와 sheet_id 반환. 실패 시 (None, None)."""
     if not HAS_GOOGLE_LIBS or "google_drive" not in st.secrets:
+        return None, None
+    # [v2.4.0] 인터넷이 끊긴 상태면 API 호출 자체를 시도하지 않고 바로 포기
+    # → 무한 대기(행업) 없이 즉시 로컬 전용 모드로 동작
+    if not has_internet():
         return None, None
     try:
         credentials_info = dict(st.secrets["google_drive"])
@@ -477,12 +537,25 @@ def save_temp_backup():
 # 로컬 timestamp가 클라우드보다 TS_DIFF_THRESHOLD_SEC 초 이상 앞서면
 # 로컬 → 클라우드 덮어쓰기.
 # 오프라인 중 작업했던 내용이 다음날 앱 접속 시 자동으로 클라우드에 반영됨.
+#
+# [v2.4.0] "세션당 1회" → "SYNC_RECHECK_INTERVAL_SEC초 간격으로 재시도"로 변경.
+# 기존에는 세션 시작 시 한 번 확인하고 나면(_sync_done=True) 그 세션 동안은
+# 다시는 확인하지 않아서, 같은 세션을 계속 켜둔 채로 인터넷이 중간에 복구돼도
+# 자동으로 클라우드에 반영되지 않는 문제가 있었음. 이제는 마지막 확인 후
+# 일정 시간이 지나면 다시 확인하므로, 인터넷이 돌아온 뒤 아무 저장 동작
+# (프로세스 추가/수정 등으로 화면이 다시 그려지는 시점)이 한 번만 있으면
+# 자동으로 클라우드에 반영된다.
 # =====================================================================
+SYNC_RECHECK_INTERVAL_SEC = 60  # 이 시간(초)마다 로컬→클라우드 동기화 필요 여부 재확인
+
+
 def sync_local_to_cloud_if_needed():
-    """로컬이 더 최신이면 클라우드에 덮어씀. 세션당 1회."""
-    if st.session_state.get("_sync_done", False):
+    """로컬이 더 최신이면 클라우드에 덮어씀. 마지막 확인 후 SYNC_RECHECK_INTERVAL_SEC초가
+    지나기 전까지는 다시 확인하지 않음 (매번 재시도하며 불필요하게 지연되는 것 방지)."""
+    last_check = st.session_state.get("_last_sync_check_ts", 0)
+    if time.time() - last_check < SYNC_RECHECK_INTERVAL_SEC:
         return
-    st.session_state._sync_done = True  # 먼저 플래그 세팅 (오류 나도 중복 실행 방지)
+    st.session_state._last_sync_check_ts = time.time()  # 먼저 기록 (오류 나도 중복 실행 방지)
 
     supplier  = st.session_state.master_info.get("supplier", "")
     evaluator = st.session_state.master_info.get("evaluator", "")
@@ -505,7 +578,11 @@ def sync_local_to_cloud_if_needed():
     cloud_ts = get_gsheet_cloud_timestamp(fname)
 
     if cloud_ts is None:
-        # 클라우드에 없으면 로컬을 업로드
+        # [v2.4.0] 클라우드에 없는 것인지, 아니면 그냥 오프라인이라 못 읽어온 것인지 구분
+        # → 오프라인이면 이번엔 조용히 넘어가고, 다음 재시도 때 다시 확인
+        if not has_internet():
+            return
+        # 온라인인데도 클라우드에 없으면 로컬을 업로드
         upload_or_update_gsheet(fname, local_data)
         logger.warning("[Sync] 클라우드에 없음 → 로컬 업로드 완료")
         return
@@ -911,6 +988,17 @@ if st.session_state.is_evaluating:
         f"Evaluator: **{st.session_state.master_info['evaluator']}**"
     )
 
+    # [v2.4.0] 온라인/오프라인 상태 표시
+    # 인터넷이 끊겨도 앱이 멈추지 않고 로컬 저장만으로 계속 진행되는데,
+    # 지금 클라우드까지 저장되고 있는지 사용자가 바로 알 수 있도록 안내.
+    if has_internet():
+        st.caption("☁️ Cloud sync: connected — your data is backed up locally and to the cloud.")
+    else:
+        st.caption(
+            "📴 No internet connection — your data is still being saved locally. "
+            "It will sync to the cloud automatically once you're back online."
+        )
+
     if st.session_state.stop_backup:
         st.warning("⚠️ CSV downloaded. Automatic backup is now disabled for this session.")
 
@@ -1270,7 +1358,8 @@ if st.session_state.is_evaluating:
                                 'download_action_status', 'show_confirm_clear', 'nav_index',
                                 'is_inserting', 'show_delete_confirm',
                                 'p_name_input', 'p_desc_input', 'p_type_input',
-                                'p_score_input', 'p_remark_input', '_sync_done']:
+                                'p_score_input', 'p_remark_input',
+                                '_last_sync_check_ts']:  # [v2.4.0] _sync_done → _last_sync_check_ts
                         if key in st.session_state:
                             del st.session_state[key]
                     st.rerun()
