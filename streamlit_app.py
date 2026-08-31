@@ -1,8 +1,13 @@
 # =============================================================================
 # Supplier OAMI Evaluation App
-# Version: 2.6.0
+# Version: 2.7.0
 #
 # [버전 히스토리 - 최신순]
+#   v2.7.0 - Description 입력칸에 미리 정의된(predefined) 문구를 고를 수 있는
+#            프리셋 드롭다운 추가. 프리셋을 고르면 Description 칸이 그
+#            문구로 채워지고, 이어서 타이핑해 내용을 덧붙이거나 전부 지우고
+#            새로 쓸 수 있음. (DESCRIPTION_PRESETS 목록은 예시이므로 실제
+#            사용하는 문구로 직접 교체 필요)
 #   v2.6.0 - "Large로 바꾸고 새로고침하면 Medium으로 돌아간다" 문제 해결.
 #            글자 크기 선택값을 URL 쿼리 파라미터(?text_size=...)에도 저장해서
 #            브라우저를 새로고침(F5)해도 마지막 선택이 유지되도록 함.
@@ -30,6 +35,19 @@
 # 공급업체 OAMI(Operation Assessment & Management Index) 평가 앱.
 # 프로세스별 Type(MH/P/WIP) 및 PAMI 점수(1~5)를 입력하고
 # Google Sheets(클라우드) + 서버 로컬 파일에 이중 백업.
+#
+# [v2.7.0 변경사항 - Description 프리셋 추가]
+#   - "Description에 predefined 내용을 먼저 넣어두고, 그 뒤에 추가로 입력할
+#     수 있게 해달라"는 요청에 따라 추가.
+#   - Description 입력칸 위에 프리셋 선택 드롭다운(Description Preset)을
+#     추가. 프리셋을 고르면 Description 칸이 그 문구로 채워지고, 사용자는
+#     이어서 타이핑해 내용을 덧붙이거나, 전부 지우고 새로 쓸 수도 있음.
+#   - 프리셋 드롭다운은 st.form 밖에 배치함 — form 안의 위젯은 "Save/Update"
+#     버튼을 눌러야만 값이 반영되므로, 고르자마자 Description 칸에 바로
+#     채워지게 하려면 폼 바깥에 있어야 함.
+#   - DESCRIPTION_PRESETS 목록(파일 상단 상수)은 실제 현장 문구를 몰라서
+#     넣어둔 예시(placeholder)이므로, 회사에서 실제로 자주 쓰는 문구로
+#     직접 교체해서 사용할 것.
 #
 # [v2.6.0 변경사항 - 글자 크기, 새로고침해도 유지되도록 개선]
 #   - "Large로 바꾸고 새로고침을 하면 다시 Medium으로 바뀐다"는 피드백에 따라 추가.
@@ -264,6 +282,29 @@ if not os.path.exists(BACKUP_DIR):
 # 유효값 상수
 VALID_TYPES  = {"MH", "P", "WIP"}
 VALID_SCORES = {1, 2, 3, 4, 5}
+
+# =====================================================================
+# [v2.7.0] Description 프리셋(predefined) 목록
+# "Description 칸에 미리 정의된 문구를 먼저 넣어두고, 그 뒤에 이어서 추가로
+# 입력할 수 있게 해달라"는 요청에 따라 추가.
+#
+# ⚠️ 아래 목록은 실제 현장 문구를 몰라서 넣어둔 예시(placeholder)입니다.
+#    회사에서 자주 쓰는 실제 Description 문구로 자유롭게 바꿔서 쓰세요.
+#    (한 줄에 문구 하나씩, 따옴표 안에 작성 → 쉼표로 구분)
+# =====================================================================
+DESCRIPTION_PRESETS = [
+    "Process performed according to standard work instructions",
+    "Operator following safety procedures correctly",
+    "Equipment / tooling in good working condition",
+    "Quality checkpoint observed and passed",
+    "Material handling and storage meets requirements",
+    "Workplace organization (5S) maintained",
+    "Documentation and records properly maintained",
+    "Cycle time within target",
+    "Non-conformance identified during observation",
+    "No issues observed during this process",
+]
+DESCRIPTION_PRESET_PLACEHOLDER = "-- Select a preset (optional) --"
 
 # 백업 보관 기간 (일)
 BACKUP_RETENTION_DAYS = 14
@@ -876,6 +917,22 @@ def delete_current_process():
     sync_form_with_state()
 
 
+# =====================================================================
+# [v2.7.0] Description 프리셋 적용
+# 프리셋 선택 드롭다운은 st.form 밖에 있어야 고르는 즉시 화면이 갱신되고
+# Description 칸에 반영된다 (form 안의 위젯은 제출 전까지 값이 반영되지
+# 않으므로, 프리셋 드롭다운은 폼 바깥에 둔다).
+# =====================================================================
+def apply_description_preset():
+    """프리셋을 고르면 Description 입력칸을 그 문구로 채운다.
+    사용자는 이후 이어서 타이핑하거나, 전부 지우고 새로 쓸 수 있다."""
+    selected = st.session_state.get("desc_preset_select", DESCRIPTION_PRESET_PLACEHOLDER)
+    if selected and selected != DESCRIPTION_PRESET_PLACEHOLDER:
+        st.session_state.p_desc_input = selected
+        # 같은 프리셋을 나중에 다시 고를 수 있도록 드롭다운은 안내 문구로 리셋
+        st.session_state.desc_preset_select = DESCRIPTION_PRESET_PLACEHOLDER
+
+
 def process_form_submit():
     p_name   = st.session_state.p_name_input
     p_desc   = st.session_state.p_desc_input
@@ -1171,6 +1228,20 @@ if st.session_state.is_evaluating:
             )
 
     # =====================================================================
+    # [v2.7.0] Description 프리셋 선택
+    # st.form 밖에 있어야 선택 즉시 반영되므로, 폼 시작 전에 배치한다.
+    # 프리셋을 고르면 아래 Description 칸이 그 문구로 채워지고, 이어서
+    # 타이핑해서 내용을 덧붙이거나, 전부 지우고 새로 쓸 수도 있다.
+    # =====================================================================
+    st.selectbox(
+        "📋 Description Preset (optional)",
+        options=[DESCRIPTION_PRESET_PLACEHOLDER] + DESCRIPTION_PRESETS,
+        key="desc_preset_select",
+        on_change=apply_description_preset,
+        help="Pick a preset to auto-fill the Description field below, then keep typing to add more, or clear it and write your own."
+    )
+
+    # =====================================================================
     # PAMI 입력 폼
     # =====================================================================
     with st.form("pami_input_form", clear_on_submit=False):
@@ -1178,7 +1249,7 @@ if st.session_state.is_evaluating:
         if st.session_state.pami_form_error:
             st.error(st.session_state.pami_form_error)
         st.text_input("Process Name (Optional)", key="p_name_input")
-        st.text_input("Description - Required*", placeholder="Enter details...", key="p_desc_input")
+        st.text_input("Description - Required*", placeholder="Enter details, or pick a preset above...", key="p_desc_input")
         st.write("Type - Required*")
         st.radio("Type", options=["MH", "P", "WIP"], index=None, horizontal=True,
                  label_visibility="collapsed", key="p_type_input")
