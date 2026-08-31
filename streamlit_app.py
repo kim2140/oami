@@ -1,8 +1,13 @@
 # =============================================================================
 # Supplier OAMI Evaluation App
-# Version: 2.4.0
+# Version: 2.5.0
 #
 # [버전 히스토리 - 최신순]
+#   v2.5.0 - 글자 크기 선택 UI를 아이콘 버튼 → 다시 라디오 버튼으로 되돌림
+#            (휴대폰 좁은 화면에서 버튼 3개가 세로로 쌓이는 문제 해결).
+#            v2.3.0 라디오 버전에 있었던 "화면 전환 시 선택값이 사라지는"
+#            문제는 index+key 동시 사용이 원인으로 보여 제거해서 해결.
+#            옵션 앞 "A" 글자 크기를 다르게 표시하는 것은 그대로 유지.
 #   v2.4.0 - "인터넷 안 되면 앱이 멈춘다" 문제 해결: 인터넷 연결 여부를 빠르게
 #            사전 확인(최대 2.5초) + 소켓 타임아웃(8초) 적용해 오프라인 시
 #            더 이상 화면이 멈추지 않고 즉시 로컬 저장만으로 계속 진행됨.
@@ -22,6 +27,18 @@
 # 공급업체 OAMI(Operation Assessment & Management Index) 평가 앱.
 # 프로세스별 Type(MH/P/WIP) 및 PAMI 점수(1~5)를 입력하고
 # Google Sheets(클라우드) + 서버 로컬 파일에 이중 백업.
+#
+# [v2.5.0 변경사항 - 글자 크기 UI를 라디오 버튼으로 되돌림]
+#   - "휴대폰으로 열었더니 버튼 3개가 세로로 나와서 보기 불편하다"는 피드백에
+#     따라, v2.3.1에서 도입했던 아이콘 버튼(A/A/A)을 다시 라디오 버튼으로 변경.
+#     라디오는 좁은 화면에서도 옵션 3개가 가로 한 줄로 유지됨.
+#   - "예전 라디오 버전은 화면 전환 시 선택값이 사라지는 것 같았다"는 피드백도
+#     함께 해결: v2.3.0에서는 st.radio(index=1, key="font_size_choice")처럼
+#     index와 key를 동시에 넘겼는데, 이 조합이 화면이 다시 그려질 때 선택값을
+#     index 기본값으로 되돌리는 원인으로 보여, index는 제거하고 session_state
+#     초기화만으로 기본값을 잡도록 수정 (Streamlit 공식 권장 방식).
+#   - 라디오 옵션 앞의 "A" 글자를 작게/중간/크게 실제 크기로 다르게 표시하는
+#     것은 그대로 유지 (CSS :nth-of-type으로 옵션별 스타일 지정).
 #
 # [v2.4.0 변경사항 - 오프라인 대응 강화]
 #   - "인터넷이 안 되면 작동을 멈춘다"는 피드백에 따라 추가.
@@ -111,9 +128,14 @@ st.markdown("### 📝 Supplier OAMI Evaluation App")
 # =====================================================================
 # [v2.3.0] 글자 크기 선택 (Small / Medium / Large)
 # [v2.3.1] 라디오 버튼 → 크기별 아이콘 버튼(A/A/A)으로 변경
-#   - 버튼 안의 "A" 글자 크기 자체를 작게/중간/크게 실제로 다르게 표시해서
-#     별도 설명 없이도 크기 차이가 한눈에 보이도록 구성
-#   - 현재 선택된 크기는 type="primary"(강조 색상) + 체크(✓) 표시로 명확히 구분
+# [v2.5.0] 아이콘 버튼 → 다시 라디오 버튼으로 되돌림
+#   - 버튼 3개가 휴대폰 같은 좁은 화면에서는 가로 폭이 부족해 세로로
+#     쌓여 보기 불편하다는 피드백 반영 (라디오는 좁은 화면에서도 한 줄 유지)
+#   - v2.3.0 라디오 버전에서 있었던 "화면 전환 시 선택값이 사라지는(초기화되는)
+#     것처럼 보이는" 문제는 st.radio에 index와 key를 동시에 넘긴 것이 원인으로
+#     보여, 이번엔 session_state 초기화만으로 기본값을 잡고 index는 넘기지 않음
+#   - 라디오 옵션 앞에 표시되는 "A" 글자 크기는 여전히 작게/중간/크게 다르게
+#     표시해서(CSS nth-of-type 사용) 텍스트만으로도 크기 차이를 알 수 있게 유지
 # "글자가 작아서 안 보인다"는 피드백에 따라 추가.
 # 메인 화면 최상단에 배치하고, 선택값은 세션 동안 유지되며
 # 앱 전체 텍스트(라벨/버튼/표/안내문 등)에 CSS로 즉시 적용된다. 기본값은 Medium.
@@ -124,14 +146,19 @@ FONT_SIZE_PRESETS = {
     "Large":  "20px",
 }
 
-# [v2.3.1] 버튼 안 "A" 아이콘 자체의 크기 — 전역 글자 크기(FONT_SIZE_PRESETS)와는
-# 별개로, 항상 작게/중간/크게 뚜렷한 크기 차이를 보여주기 위한 고정 값
+# [v2.3.1, v2.5.0에서도 유지] 라디오 옵션 앞 "A" 아이콘 자체의 크기 — 전역
+# 글자 크기(FONT_SIZE_PRESETS)와는 별개로, 항상 작게/중간/크게 뚜렷한 크기
+# 차이를 보여주기 위한 고정 값
 FONT_ICON_SIZES = {
-    "Small":  "13px",
+    "Small":  "14px",
     "Medium": "18px",
-    "Large":  "26px",
+    "Large":  "24px",
 }
 
+# [v2.5.0] index 파라미터를 쓰지 않고 session_state로만 기본값을 초기화한다.
+# st.radio(..., index=1, key="font_size_choice")처럼 index와 key를 함께
+# 넘기면, 화면이 다시 그려질 때(rerun) 선택값이 index 기본값으로 되돌아가며
+# 순간적으로 사라지는 것처럼 보이는 현상이 있었기 때문.
 if "font_size_choice" not in st.session_state:
     st.session_state.font_size_choice = "Medium"
 
@@ -168,53 +195,35 @@ def apply_font_size(size_label):
     """, unsafe_allow_html=True)
 
 
-def render_font_size_buttons():
+def render_font_size_radio():
     """
-    [v2.3.1] Small/Medium/Large 아이콘 버튼 렌더링.
-    - 버튼 라벨의 "A" 글자 크기를 실제로 다르게(13px/18px/26px) 표시하여
-      텍스트 설명 없이도 크기 차이를 바로 알 수 있게 함
-    - 현재 선택된 버튼은 type="primary"로 색상 강조 + "✓" 체크 표시
-    - Streamlit의 key="..." 위젯은 컨테이너에 자동으로 "st-key-<key>" 클래스가
-      붙으므로, 이를 이용해 버튼별로 다른 font-size를 CSS로 지정한다.
+    [v2.5.0] Small/Medium/Large 라디오 버튼 렌더링 (아이콘 버튼에서 복귀).
+    - 휴대폰처럼 좁은 화면에서도 옵션 3개가 가로 한 줄로 자연스럽게 표시됨
+      (버튼 3개는 좁은 화면에서 세로로 쌓여 불편했음)
+    - 각 옵션 앞의 "A" 글자 크기를 실제로 다르게(14px/18px/24px) 표시해서
+      텍스트 설명 없이도 크기 차이를 한눈에 알 수 있도록 구성
+      (Streamlit key="font_size_choice" 위젯의 컨테이너에 자동으로 붙는
+      "st-key-font_size_choice" 클래스 + CSS :nth-of-type으로 옵션별 스타일 지정)
+    - index를 넘기지 않고 session_state 초기화만으로 기본값을 잡아서,
+      화면 전환(rerun) 후에도 선택값이 사라지지 않도록 함
     """
     st.markdown(f"""
     <style>
-    .st-key-fs_btn_small button p,  .st-key-fs_btn_small button div  {{ font-size: {FONT_ICON_SIZES['Small']}  !important; }}
-    .st-key-fs_btn_medium button p, .st-key-fs_btn_medium button div {{ font-size: {FONT_ICON_SIZES['Medium']} !important; }}
-    .st-key-fs_btn_large button p,  .st-key-fs_btn_large button div  {{ font-size: {FONT_ICON_SIZES['Large']}  !important; }}
+    .st-key-font_size_choice div[role="radiogroup"] label:nth-of-type(1) p {{ font-size: {FONT_ICON_SIZES['Small']}  !important; }}
+    .st-key-font_size_choice div[role="radiogroup"] label:nth-of-type(2) p {{ font-size: {FONT_ICON_SIZES['Medium']} !important; }}
+    .st-key-font_size_choice div[role="radiogroup"] label:nth-of-type(3) p {{ font-size: {FONT_ICON_SIZES['Large']}  !important; }}
     </style>
     """, unsafe_allow_html=True)
 
-    st.write("**🔠 Text Size**")
-    current = st.session_state.font_size_choice
-    fs_c1, fs_c2, fs_c3 = st.columns(3)
-
-    with fs_c1:
-        if st.button("✓ A" if current == "Small" else "A", key="fs_btn_small",
-                     type="primary" if current == "Small" else "secondary",
-                     use_container_width=True):
-            st.session_state.font_size_choice = "Small"
-            st.rerun()
-        st.markdown("<div style='text-align:center;font-size:12px;color:#888;'>Small</div>", unsafe_allow_html=True)
-
-    with fs_c2:
-        if st.button("✓ A" if current == "Medium" else "A", key="fs_btn_medium",
-                     type="primary" if current == "Medium" else "secondary",
-                     use_container_width=True):
-            st.session_state.font_size_choice = "Medium"
-            st.rerun()
-        st.markdown("<div style='text-align:center;font-size:12px;color:#888;'>Medium</div>", unsafe_allow_html=True)
-
-    with fs_c3:
-        if st.button("✓ A" if current == "Large" else "A", key="fs_btn_large",
-                     type="primary" if current == "Large" else "secondary",
-                     use_container_width=True):
-            st.session_state.font_size_choice = "Large"
-            st.rerun()
-        st.markdown("<div style='text-align:center;font-size:12px;color:#888;'>Large</div>", unsafe_allow_html=True)
+    st.radio(
+        "🔠 Text Size",
+        options=list(FONT_SIZE_PRESETS.keys()),
+        horizontal=True,
+        key="font_size_choice"
+    )
 
 
-render_font_size_buttons()
+render_font_size_radio()
 apply_font_size(st.session_state.font_size_choice)
 st.write("")
 
