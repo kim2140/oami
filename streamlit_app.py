@@ -1,8 +1,11 @@
 # =============================================================================
 # Supplier OAMI Evaluation App
-# Version: 2.5.0
+# Version: 2.6.0
 #
 # [버전 히스토리 - 최신순]
+#   v2.6.0 - "Large로 바꾸고 새로고침하면 Medium으로 돌아간다" 문제 해결.
+#            글자 크기 선택값을 URL 쿼리 파라미터(?text_size=...)에도 저장해서
+#            브라우저를 새로고침(F5)해도 마지막 선택이 유지되도록 함.
 #   v2.5.0 - 글자 크기 선택 UI를 아이콘 버튼 → 다시 라디오 버튼으로 되돌림
 #            (휴대폰 좁은 화면에서 버튼 3개가 세로로 쌓이는 문제 해결).
 #            v2.3.0 라디오 버전에 있었던 "화면 전환 시 선택값이 사라지는"
@@ -27,6 +30,16 @@
 # 공급업체 OAMI(Operation Assessment & Management Index) 평가 앱.
 # 프로세스별 Type(MH/P/WIP) 및 PAMI 점수(1~5)를 입력하고
 # Google Sheets(클라우드) + 서버 로컬 파일에 이중 백업.
+#
+# [v2.6.0 변경사항 - 글자 크기, 새로고침해도 유지되도록 개선]
+#   - "Large로 바꾸고 새로고침을 하면 다시 Medium으로 바뀐다"는 피드백에 따라 추가.
+#   - 원인: st.session_state는 브라우저를 새로고침(F5)하면 완전히 새로운
+#     세션으로 취급되어 통째로 초기화됨. (같은 화면 안에서 버튼을 눌러
+#     발생하는 "rerun"과는 다른 상황 — rerun에서는 session_state가 유지됨)
+#   - 해결: 글자 크기 선택값을 session_state뿐 아니라 URL 쿼리 파라미터
+#     (예: ?text_size=Large)에도 함께 저장. 새로고침해도 URL은 그대로
+#     남아있으므로, 다음 로딩 시 session_state 대신 쿼리 파라미터에서
+#     마지막 선택값을 읽어와 그대로 복원함.
 #
 # [v2.5.0 변경사항 - 글자 크기 UI를 라디오 버튼으로 되돌림]
 #   - "휴대폰으로 열었더니 버튼 3개가 세로로 나와서 보기 불편하다"는 피드백에
@@ -159,8 +172,19 @@ FONT_ICON_SIZES = {
 # st.radio(..., index=1, key="font_size_choice")처럼 index와 key를 함께
 # 넘기면, 화면이 다시 그려질 때(rerun) 선택값이 index 기본값으로 되돌아가며
 # 순간적으로 사라지는 것처럼 보이는 현상이 있었기 때문.
+#
+# [v2.6.0] "Large로 바꾸고 새로고침(F5)하면 다시 Medium으로 돌아간다"는
+# 피드백에 따라 추가.
+# session_state는 브라우저를 새로고침하면 완전히 새로운 세션으로 초기화되어
+# 사라지므로(같은 화면 안에서의 rerun과는 다름), 새로고침에도 남는 URL의
+# 쿼리 파라미터(?text_size=...)에 선택값을 함께 저장해서, 새로고침 시
+# session_state 대신 쿼리 파라미터에서 마지막 선택값을 읽어오도록 함.
+_qp_size = st.query_params.get("text_size", "Medium")
+if _qp_size not in FONT_SIZE_PRESETS:
+    _qp_size = "Medium"
+
 if "font_size_choice" not in st.session_state:
-    st.session_state.font_size_choice = "Medium"
+    st.session_state.font_size_choice = _qp_size
 
 
 def apply_font_size(size_label):
@@ -206,6 +230,8 @@ def render_font_size_radio():
       "st-key-font_size_choice" 클래스 + CSS :nth-of-type으로 옵션별 스타일 지정)
     - index를 넘기지 않고 session_state 초기화만으로 기본값을 잡아서,
       화면 전환(rerun) 후에도 선택값이 사라지지 않도록 함
+    - [v2.6.0] 선택값을 URL 쿼리 파라미터(?text_size=...)에도 함께 저장해서,
+      브라우저를 새로고침(F5)해도 마지막에 고른 크기가 유지되도록 함
     """
     st.markdown(f"""
     <style>
@@ -221,6 +247,9 @@ def render_font_size_radio():
         horizontal=True,
         key="font_size_choice"
     )
+
+    # [v2.6.0] 새로고침 후에도 유지되도록 현재 선택값을 URL에 동기화
+    st.query_params["text_size"] = st.session_state.font_size_choice
 
 
 render_font_size_radio()
