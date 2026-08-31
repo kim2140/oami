@@ -1,8 +1,12 @@
 # =============================================================================
 # Supplier OAMI Evaluation App
-# Version: 2.10.0
+# Version: 2.11.0
 #
 # [버전 히스토리 - 최신순]
+#   v2.11.0 - 글자 크기 조절을 Small/Medium/Large 라디오 3단계에서 "−"/"+"
+#             줌인·줌아웃 5단계(13/15/17/20/24px)로 변경. 가장 작은 크기는
+#             기존과 동일(13px)하게 유지하고, 가장 큰 크기는 기존 Large
+#             (20px)보다 더 키움(24px). 새로고침해도 유지되는 것은 그대로.
 #   v2.10.0 - Description 프리셋 목록을 20개로 확장(입고/보관 → 자재 이동 →
 #             절삭/성형/가공 → 접합 → 표면처리 → 품질 → 포장 순). "Insert"
 #             버튼은 번거롭다는 피드백에 따라 제거하고, 드롭다운에서 고르는
@@ -50,6 +54,20 @@
 # 공급업체 OAMI(Operation Assessment & Management Index) 평가 앱.
 # 프로세스별 Type(MH/P/WIP) 및 PAMI 점수(1~5)를 입력하고
 # Google Sheets(클라우드) + 서버 로컬 파일에 이중 백업.
+#
+# [v2.11.0 변경사항 - 글자 크기 조절을 줌인/줌아웃 5단계로 변경]
+#   - "zoom in/out을 5단계로 해서 더 키우자. 가장 작은 사이즈는 더 줄일
+#     필요는 없다"는 요청에 따라 추가.
+#   - Small/Medium/Large 3단계(13/16/20px) 라디오 버튼을 없애고, "−" 버튼 /
+#     현재 크기의 "A" 미리보기 / "+" 버튼으로 구성된 줌 컨트롤로 변경.
+#   - 5단계 값은 13/15/17/20/24px. 가장 작은 값(13px)은 기존 Small과
+#     동일하게 유지했고, 가장 큰 값은 기존 Large(20px)보다 더 키운 24px로
+#     설정. 기본값은 3단계(17px, 기존 Medium과 비슷한 수준).
+#   - 선택지가 3개일 때는 라디오처럼 바로 고르는 방식이 더 간편했지만,
+#     5단계로 늘어나면서 "−"/"+"로 오가는 줌 컨트롤이 더 단순하고 화면
+#     공간도 덜 차지한다고 판단.
+#   - 새로고침(F5)해도 유지되도록 URL 쿼리 파라미터(?zoom=단계번호)에
+#     저장하는 방식(v2.6.0)은 그대로 유지.
 #
 # [v2.10.0 변경사항 - Description 프리셋 20개 확장 + Insert 버튼 제거]
 #   - "20개로 늘려주고, Insert 버튼은 더 귀찮으니 빼달라"는 요청에 따라 추가.
@@ -208,59 +226,51 @@ st.markdown("### 📝 Supplier OAMI Evaluation App")
 # =====================================================================
 # [v2.3.0] 글자 크기 선택 (Small / Medium / Large)
 # [v2.3.1] 라디오 버튼 → 크기별 아이콘 버튼(A/A/A)으로 변경
-# [v2.5.0] 아이콘 버튼 → 다시 라디오 버튼으로 되돌림
-#   - 버튼 3개가 휴대폰 같은 좁은 화면에서는 가로 폭이 부족해 세로로
-#     쌓여 보기 불편하다는 피드백 반영 (라디오는 좁은 화면에서도 한 줄 유지)
-#   - v2.3.0 라디오 버전에서 있었던 "화면 전환 시 선택값이 사라지는(초기화되는)
-#     것처럼 보이는" 문제는 st.radio에 index와 key를 동시에 넘긴 것이 원인으로
-#     보여, 이번엔 session_state 초기화만으로 기본값을 잡고 index는 넘기지 않음
-#   - 라디오 옵션 앞에 표시되는 "A" 글자 크기는 여전히 작게/중간/크게 다르게
-#     표시해서(CSS nth-of-type 사용) 텍스트만으로도 크기 차이를 알 수 있게 유지
+# [v2.5.0] 아이콘 버튼 → 다시 라디오 버튼으로 되돌림 (휴대폰 좁은 화면 대응 +
+#          index/key 동시 사용으로 인한 "선택값이 사라지는" 문제 해결)
+# [v2.6.0] URL 쿼리 파라미터에 저장해 새로고침 후에도 선택값 유지
+# [v2.11.0] Small/Medium/Large 3단계 라디오 → "−"/"+" 줌인·줌아웃 5단계로 변경
+#   - "zoom in/out을 5단계로 해서 더 키우자. 젤 작은 사이즈는 더 줄일 필요는
+#     없다"는 요청에 따라 변경. 3단계(13/16/20px)에서 5단계(13/15/17/20/24px)로
+#     확장. 가장 작은 값(13px)은 기존 그대로 유지하고, 가장 큰 값은 기존
+#     Large(20px)보다 더 키움(24px).
+#   - 선택지가 3개일 때는 직접 고르는 라디오가 더 간편했지만, 5단계로
+#     늘어나면서 한 줄에 다 늘어놓기보다 "-"/"+"로 단계를 오가는 줌 컨트롤이
+#     더 간단하고 화면도 덜 차지함.
+#   - 가운데에는 현재 단계의 실제 크기로 "A"를 표시해서, 지금이 몇 단계이고
+#     얼마나 커지는지 눈으로 바로 확인 가능.
 # "글자가 작아서 안 보인다"는 피드백에 따라 추가.
-# 메인 화면 최상단에 배치하고, 선택값은 세션 동안 유지되며
-# 앱 전체 텍스트(라벨/버튼/표/안내문 등)에 CSS로 즉시 적용된다. 기본값은 Medium.
+# 메인 화면 최상단에 배치하고, 선택값은 세션 동안 유지되며 새로고침해도
+# URL 쿼리 파라미터를 통해 유지된다. 앱 전체 텍스트(라벨/버튼/표/안내문 등)에
+# CSS로 즉시 적용된다.
 # =====================================================================
-FONT_SIZE_PRESETS = {
-    "Small":  "13px",
-    "Medium": "16px",
-    "Large":  "20px",
-}
+# [v2.11.0] 1단계(가장 작음, 13px) ~ 5단계(가장 큼, 24px). 1단계 값은 기존
+# Small과 동일하게 유지, 5단계는 기존 Large(20px)보다 더 크게 설정.
+FONT_ZOOM_LEVELS = [13, 15, 17, 20, 24]  # px 단위, 인덱스 0~4 = 1~5단계
+FONT_ZOOM_DEFAULT_INDEX = 2  # 3단계(17px, 기존 Medium과 비슷한 수준)를 기본값으로 사용
 
-# [v2.3.1, v2.5.0에서도 유지] 라디오 옵션 앞 "A" 아이콘 자체의 크기 — 전역
-# 글자 크기(FONT_SIZE_PRESETS)와는 별개로, 항상 작게/중간/크게 뚜렷한 크기
-# 차이를 보여주기 위한 고정 값
-FONT_ICON_SIZES = {
-    "Small":  "14px",
-    "Medium": "18px",
-    "Large":  "24px",
-}
-
-# [v2.5.0] index 파라미터를 쓰지 않고 session_state로만 기본값을 초기화한다.
-# st.radio(..., index=1, key="font_size_choice")처럼 index와 key를 함께
-# 넘기면, 화면이 다시 그려질 때(rerun) 선택값이 index 기본값으로 되돌아가며
-# 순간적으로 사라지는 것처럼 보이는 현상이 있었기 때문.
-#
 # [v2.6.0] "Large로 바꾸고 새로고침(F5)하면 다시 Medium으로 돌아간다"는
-# 피드백에 따라 추가.
-# session_state는 브라우저를 새로고침하면 완전히 새로운 세션으로 초기화되어
-# 사라지므로(같은 화면 안에서의 rerun과는 다름), 새로고침에도 남는 URL의
-# 쿼리 파라미터(?text_size=...)에 선택값을 함께 저장해서, 새로고침 시
-# session_state 대신 쿼리 파라미터에서 마지막 선택값을 읽어오도록 함.
-_qp_size = st.query_params.get("text_size", "Medium")
-if _qp_size not in FONT_SIZE_PRESETS:
-    _qp_size = "Medium"
+# 피드백에 따라 추가 (session_state는 새로고침 시 초기화되므로, 새로고침에도
+# 남는 URL 쿼리 파라미터에 값을 함께 저장해두고 거기서 복원한다).
+# [v2.11.0] 저장 형식을 문구(Small/Medium/Large) 대신 단계 번호(0~4)로 변경.
+_qp_zoom = st.query_params.get("zoom")
+try:
+    _qp_zoom_index = int(_qp_zoom) if _qp_zoom is not None else FONT_ZOOM_DEFAULT_INDEX
+except (TypeError, ValueError):
+    _qp_zoom_index = FONT_ZOOM_DEFAULT_INDEX
+if not (0 <= _qp_zoom_index < len(FONT_ZOOM_LEVELS)):
+    _qp_zoom_index = FONT_ZOOM_DEFAULT_INDEX
 
-if "font_size_choice" not in st.session_state:
-    st.session_state.font_size_choice = _qp_size
+if "font_zoom_index" not in st.session_state:
+    st.session_state.font_zoom_index = _qp_zoom_index
 
 
-def apply_font_size(size_label):
-    """선택된 글자 크기를 앱 전역 CSS로 적용."""
-    base_px = FONT_SIZE_PRESETS.get(size_label, FONT_SIZE_PRESETS["Medium"])
+def apply_font_size(base_px):
+    """선택된 글자 크기(px)를 앱 전역 CSS로 적용."""
     st.markdown(f"""
     <style>
     html, body, .stApp, [data-testid="stAppViewContainer"] {{
-        font-size: {base_px} !important;
+        font-size: {base_px}px !important;
     }}
     .stMarkdown, .stMarkdown p, .stMarkdown li, .stMarkdown span, .stMarkdown div,
     .stText, .stCaption, [data-testid="stCaptionContainer"],
@@ -280,47 +290,62 @@ def apply_font_size(size_label):
     table, table td, table th,
     code, pre,
     .stTabs [data-baseweb="tab"] {{
-        font-size: {base_px} !important;
+        font-size: {base_px}px !important;
     }}
     </style>
     """, unsafe_allow_html=True)
 
 
-def render_font_size_radio():
+def zoom_font_out():
+    """[v2.11.0] 글자 크기를 한 단계 줄인다 (1단계보다 더 줄어들지 않음)."""
+    if st.session_state.font_zoom_index > 0:
+        st.session_state.font_zoom_index -= 1
+
+
+def zoom_font_in():
+    """[v2.11.0] 글자 크기를 한 단계 키운다 (5단계보다 더 커지지 않음)."""
+    if st.session_state.font_zoom_index < len(FONT_ZOOM_LEVELS) - 1:
+        st.session_state.font_zoom_index += 1
+
+
+def render_font_zoom_control():
     """
-    [v2.5.0] Small/Medium/Large 라디오 버튼 렌더링 (아이콘 버튼에서 복귀).
-    - 휴대폰처럼 좁은 화면에서도 옵션 3개가 가로 한 줄로 자연스럽게 표시됨
-      (버튼 3개는 좁은 화면에서 세로로 쌓여 불편했음)
-    - 각 옵션 앞의 "A" 글자 크기를 실제로 다르게(14px/18px/24px) 표시해서
-      텍스트 설명 없이도 크기 차이를 한눈에 알 수 있도록 구성
-      (Streamlit key="font_size_choice" 위젯의 컨테이너에 자동으로 붙는
-      "st-key-font_size_choice" 클래스 + CSS :nth-of-type으로 옵션별 스타일 지정)
-    - index를 넘기지 않고 session_state 초기화만으로 기본값을 잡아서,
-      화면 전환(rerun) 후에도 선택값이 사라지지 않도록 함
-    - [v2.6.0] 선택값을 URL 쿼리 파라미터(?text_size=...)에도 함께 저장해서,
-      브라우저를 새로고침(F5)해도 마지막에 고른 크기가 유지되도록 함
+    [v2.11.0] "−" / 현재 크기 미리보기(A) / "+" 줌인·줌아웃 컨트롤 렌더링.
+    - "-"를 누르면 zoom_font_out(), "+"를 누르면 zoom_font_in()이 실행되어
+      단계를 하나씩 조절한다. 맨 끝 단계에서는 해당 버튼이 비활성화된다.
+    - 가운데 "A"는 현재 단계의 실제 글자 크기로 표시해, 지금 크기가 어느
+      정도인지 텍스트 설명 없이도 바로 확인할 수 있다.
+    - [v2.6.0]부터 이어온 대로, 선택값을 URL 쿼리 파라미터(?zoom=...)에도
+      함께 저장해서 새로고침(F5)해도 유지되도록 한다.
     """
-    st.markdown(f"""
-    <style>
-    .st-key-font_size_choice div[role="radiogroup"] label:nth-of-type(1) p {{ font-size: {FONT_ICON_SIZES['Small']}  !important; }}
-    .st-key-font_size_choice div[role="radiogroup"] label:nth-of-type(2) p {{ font-size: {FONT_ICON_SIZES['Medium']} !important; }}
-    .st-key-font_size_choice div[role="radiogroup"] label:nth-of-type(3) p {{ font-size: {FONT_ICON_SIZES['Large']}  !important; }}
-    </style>
-    """, unsafe_allow_html=True)
+    idx = st.session_state.font_zoom_index
+    current_px = FONT_ZOOM_LEVELS[idx]
 
-    st.radio(
-        "🔠 Text Size",
-        options=list(FONT_SIZE_PRESETS.keys()),
-        horizontal=True,
-        key="font_size_choice"
-    )
+    st.write("**🔠 Text Size**")
+    z_c1, z_c2, z_c3 = st.columns([1, 2, 1])
+    with z_c1:
+        st.button("➖", key="font_zoom_out_btn", on_click=zoom_font_out,
+                   disabled=(idx == 0), use_container_width=True,
+                   help="Make text smaller")
+    with z_c2:
+        st.markdown(
+            f"<div style='text-align:center;'>"
+            f"<span style='font-size:{current_px}px; font-weight:bold;'>A</span> "
+            f"<span style='font-size:13px; color:#888;'>({idx + 1}/{len(FONT_ZOOM_LEVELS)})</span>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
+    with z_c3:
+        st.button("➕", key="font_zoom_in_btn", on_click=zoom_font_in,
+                   disabled=(idx == len(FONT_ZOOM_LEVELS) - 1), use_container_width=True,
+                   help="Make text bigger")
 
-    # [v2.6.0] 새로고침 후에도 유지되도록 현재 선택값을 URL에 동기화
-    st.query_params["text_size"] = st.session_state.font_size_choice
+    # [v2.6.0, v2.11.0] 새로고침 후에도 유지되도록 현재 단계를 URL에 동기화
+    st.query_params["zoom"] = str(st.session_state.font_zoom_index)
 
 
-render_font_size_radio()
-apply_font_size(st.session_state.font_size_choice)
+render_font_zoom_control()
+apply_font_size(FONT_ZOOM_LEVELS[st.session_state.font_zoom_index])
 st.write("")
 
 # 로컬 백업 폴더
