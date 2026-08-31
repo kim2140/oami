@@ -1,11 +1,26 @@
 # =============================================================================
 # Supplier OAMI Evaluation App
-# Version: 2.2.0
+# Version: 2.3.0
+#
+# [버전 히스토리 - 최신순]
+#   v2.3.0 - 화면 UI 텍스트(라벨/버튼/안내·경고·에러 메시지) 영어로 변경
+#            + 글자 크기 선택 기능(Small/Medium/Large) 추가 (메인 화면 최상단)
+#   v2.2.1 - Summary/Export 컬럼 순서 변경 (No. > Process > Description > Type > PAMI > Remark > Time)
+#   v2.2.0 - 저장/복구/동기화 로직 재설계 (로컬+클라우드 이중 저장,
+#            timestamp 비교 기반 복구 목록 표시, 1일 1회 자동 동기화) - Fix 1 재설계
+#   v2.1.0 - Google Sheets 14일 초과 백업 행 자동 삭제 (세션/wake-up 시 1회 실행) - Fix 2
 #
 # [개요]
 # 공급업체 OAMI(Operation Assessment & Management Index) 평가 앱.
 # 프로세스별 Type(MH/P/WIP) 및 PAMI 점수(1~5)를 입력하고
 # Google Sheets(클라우드) + 서버 로컬 파일에 이중 백업.
+#
+# [v2.3.0 변경사항 - UI 영어화 + 글자 크기 선택]
+#   - 화면에 보이는 라벨/버튼/안내·경고·에러 메시지를 영어로 변경
+#     (내부 로그 메시지(logger.*)와 코드 주석은 요청에 따라 한글 그대로 유지)
+#   - "글자가 작아서 안 보인다"는 피드백에 따라, 메인 화면 최상단에
+#     Small / Medium / Large 글자 크기 라디오 버튼 추가
+#     → 선택 즉시 앱 전체(라벨/버튼/표/안내문 등)에 CSS로 일괄 적용, 기본값 Medium
 #
 # [v2.2.0 변경사항 - Fix 1 재설계]
 #
@@ -60,6 +75,61 @@ except ImportError:
 # 브라우저 탭 아이콘 및 제목
 st.set_page_config(page_title="Supplier OAMI", page_icon="📝", layout="centered")
 st.markdown("### 📝 Supplier OAMI Evaluation App")
+
+# =====================================================================
+# [v2.3.0] 글자 크기 선택 (Small / Medium / Large)
+# "글자가 작아서 안 보인다"는 피드백에 따라 추가.
+# 메인 화면 최상단에 라디오 버튼으로 배치하고, 선택값은 세션 동안 유지되며
+# 앱 전체 텍스트(라벨/버튼/표/안내문 등)에 CSS로 즉시 적용된다. 기본값은 Medium.
+# =====================================================================
+FONT_SIZE_PRESETS = {
+    "Small":  "13px",
+    "Medium": "16px",
+    "Large":  "20px",
+}
+
+
+def apply_font_size(size_label):
+    """선택된 글자 크기를 앱 전역 CSS로 적용."""
+    base_px = FONT_SIZE_PRESETS.get(size_label, FONT_SIZE_PRESETS["Medium"])
+    st.markdown(f"""
+    <style>
+    html, body, .stApp, [data-testid="stAppViewContainer"] {{
+        font-size: {base_px} !important;
+    }}
+    .stMarkdown, .stMarkdown p, .stMarkdown li, .stMarkdown span, .stMarkdown div,
+    .stText, .stCaption, [data-testid="stCaptionContainer"],
+    .stAlert, .stAlert p, .stAlert div,
+    [data-testid="stMarkdownContainer"] p,
+    [data-testid="stMarkdownContainer"] li,
+    [data-testid="stMarkdownContainer"] span,
+    [data-testid="stMetricLabel"] p, [data-testid="stMetricValue"],
+    [data-testid="stWidgetLabel"] p, [data-testid="stWidgetLabel"] div,
+    .stButton button p, .stButton button div,
+    .stDownloadButton button p, .stDownloadButton button div,
+    .stTextInput input, .stTextArea textarea,
+    .stRadio label p, .stRadio div[role="radiogroup"] label p,
+    .stCheckbox label p,
+    .stSelectbox div, .stSelectbox span,
+    .stExpander summary p, .stExpander summary span, .stExpander div,
+    table, table td, table th,
+    code, pre,
+    .stTabs [data-baseweb="tab"] {{
+        font-size: {base_px} !important;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
+
+st.radio(
+    "🔠 Text Size",
+    options=list(FONT_SIZE_PRESETS.keys()),
+    index=1,  # Medium 기본값
+    horizontal=True,
+    key="font_size_choice"
+)
+apply_font_size(st.session_state.font_size_choice)
+st.write("")
 
 # 로컬 백업 폴더
 BACKUP_DIR = "oami_backups"
@@ -782,9 +852,10 @@ if st.session_state.is_evaluating:
 
     # =====================================================================
     # Bulk Upload via Excel
+    # [v2.3.0] 안내문/에러/경고 메시지를 영어로 변경 (화면 표시용 텍스트만 대상)
     # =====================================================================
     with st.expander("📂 Bulk Upload via Excel", expanded=False):
-        st.markdown("**엑셀 템플릿을 사용하여 여러 프로세스를 한 번에 등록할 수 있습니다.**")
+        st.markdown("**Use the Excel template below to register multiple processes at once.**")
 
         template_df = pd.DataFrame({
             "Process Name": ["Assembly 1", "Testing"],
@@ -802,7 +873,7 @@ if st.session_state.is_evaluating:
             data=towrite,
             file_name="OAMI_Bulk_Template.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            help="양식을 다운로드하여 내용을 채운 뒤 아래에 업로드하세요."
+            help="Download the template, fill it in, then upload it below."
         )
 
         uploaded_file = st.file_uploader("Upload filled Excel template", type=["xlsx", "xls"])
@@ -813,8 +884,8 @@ if st.session_state.is_evaluating:
                     required_cols = ["Description", "Type", "Score"]
                     if not all(col in df_uploaded.columns for col in required_cols):
                         st.error(
-                            f"🚨 엑셀 양식이 올바르지 않습니다. "
-                            f"다음 컬럼이 반드시 필요합니다: {', '.join(required_cols)}"
+                            f"🚨 Invalid Excel template. "
+                            f"The following columns are required: {', '.join(required_cols)}"
                         )
                     else:
                         added_count = 0
@@ -858,19 +929,19 @@ if st.session_state.is_evaluating:
                             st.session_state.is_inserting = True
                             st.session_state.nav_index    = len(st.session_state.process_list) - 1
                             sync_form_with_state()
-                            st.success(f"✅ {added_count}개의 프로세스가 성공적으로 일괄 등록되었습니다!")
+                            st.success(f"✅ {added_count} process(es) were successfully registered in bulk!")
                         if skipped_rows:
                             st.warning(
-                                f"⚠️ {len(skipped_rows)}개 행이 유효하지 않아 건너뛰었습니다:\n\n"
+                                f"⚠️ {len(skipped_rows)} row(s) were skipped because they are invalid:\n\n"
                                 + "\n".join(skipped_rows)
                             )
                         if added_count == 0 and not skipped_rows:
-                            st.warning("⚠️ 등록할 유효한 프로세스 데이터가 엑셀에 없습니다.")
+                            st.warning("⚠️ No valid process data found in the Excel file to register.")
                         if added_count > 0:
                             time.sleep(1)
                             st.rerun()
                 except Exception as e:
-                    st.error(f"🚨 파일을 읽는 중 오류가 발생했습니다: {e}")
+                    st.error(f"🚨 An error occurred while reading the file: {e}")
 
     st.write("---")
 
