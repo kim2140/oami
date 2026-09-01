@@ -1,8 +1,15 @@
 # =============================================================================
 # Supplier OAMI Evaluation App
-# Version: 2.16.0
+# Version: 2.17.0
 #
 # [버전 히스토리 - 최신순]
+#   v2.17.0 - "상도/중도/하도 영문 표기가 맞냐"는 질문에 따라 웹 검색으로 도장
+#             공정 용어를 재검증(출처는 아래 [v2.17.0 변경사항] 참고). 검증
+#             결과 하도=Primer, 중도=Intermediate Coat, 상도=Topcoat가 맞고,
+#             v2.16.0에서 빠져있던 "하도(Primer)"를 추가하고 "Mid Coat"를
+#             더 정확한 표준 용어인 "Intermediate Coat"로 수정. 순서도
+#             Pretreatment → Primer → Intermediate Coat → Top Coat → Oven
+#             (전처리 → 하도 → 중도 → 상도 → 오븐)으로 바로잡음.
 #   v2.16.0 - "가공 중에 밀링/선반이 있고, Paint에 상도/중도/오븐/전처리도
 #             넣어달라"는 요청에 따라 Description 프리셋 5개 추가(20개 →
 #             25개): Milling, Turning(선반은 Turning으로 표기, 사용자 확인
@@ -84,6 +91,27 @@
 # 공급업체 OAMI(Operation Assessment & Management Index) 평가 앱.
 # 프로세스별 Type(MH/P/WIP) 및 PAMI 점수(1~5)를 입력하고
 # Google Sheets(클라우드) + 서버 로컬 파일에 이중 백업.
+#
+# [v2.17.0 변경사항 - 도장 공정 영문 용어 재검증 및 수정(하도 Primer 추가)]
+#   - "상도가 그게 아니라 Primer 뭐 이런건데, 하도는 Clear, 중도는 Spray
+#     아닌가?"라는 질문에 따라, 추측으로 답하지 않고 웹 검색으로 사실관계를
+#     다시 확인한 뒤 반영함.
+#   - 검색 결과(출처):
+#     · 하도 = Primer / Undercoat (첫 번째 도장층, 방청+부착력)
+#       https://m.cafe.daum.net/carcolor1/6bbj/64
+#     · 중도 = Intermediate Coat (하도와 상도 사이 중간층, Surfacer라고도 함)
+#       https://www.korea-autonews.com/entry/289-중도Intermediate-Coat-자동차-용어-도장페인트
+#     · 상도 = Topcoat (마지막 색상/광택층)
+#       https://m.cafe.daum.net/carcolor1/6bbj/64
+#     · 자동차 OEM 특허 문서(전착→중도(프라이머/서페이서)→베이스코트→클리어코트
+#       순서 명시): https://patents.google.com/patent/KR20120077825A/ko
+#     · "상도=Primer, 하도=Clear"처럼 순서가 뒤바뀐 표기는 검색으로 확인한
+#       어떤 자료에서도 근거를 찾지 못함. "Spray"는 층 이름이 아니라 하도를
+#       칠하는 방식(분사) 중 하나를 가리키는 말로 확인됨.
+#   - 결론: 기존 순서(전처리→상도→중도→오븐)와 "Mid Coat" 표기가 부정확했음.
+#     이번 버전에서 "하도(Primer)"를 새로 추가하고, "Mid Coat"를 더 정확한
+#     표준 용어 "Intermediate Coat"로 수정, 순서도 실제 도장 공정 흐름대로
+#     Pretreatment → Primer → Intermediate Coat → Top Coat → Oven으로 바로잡음.
 #
 # [v2.16.0 변경사항 - 가공(Milling/Turning) + 도장(Paint) 공정 5개 프리셋 추가]
 #   - "가공 중에 밀링이 있고 선반이 있고, 이거랑 Paint 상도/중도/오븐/전처리
@@ -513,6 +541,12 @@ VALID_SCORES = {1, 2, 3, 4, 5}
 # 공정 Pretreatment(전처리)·Top Coat(상도)·Mid Coat(중도)·Oven(오븐, 도장 후
 # 건조/경화)을 순서대로 추가함. "선반"의 영문 표기는 사용자 확인을 거쳐
 # "Turning"으로 결정. 전부 실제 생산 공정이므로 Type은 전부 "P"로 지정.
+# [v2.17.0] "상도/중도/하도 영문 표기가 맞는지" 질문에 따라 웹 검색으로 재검증
+# (출처는 파일 상단 [v2.17.0 변경사항] 참고). 하도=Primer, 중도=Intermediate
+# Coat, 상도=Topcoat가 맞는 표준 용어로 확인되어, 빠져있던 "하도(Primer)"를
+# 추가하고 "Mid Coat"를 "Intermediate Coat"로 수정. 순서도 실제 도장 공정
+# 흐름대로 Pretreatment → Primer → Intermediate Coat → Top Coat → Oven으로
+# 바로잡음.
 #
 # 목록은 아래에 (공정명, Type) 형태로 한 줄에 하나씩 적으면 됩니다.
 # Type은 반드시 "MH" / "P" / "WIP" 셋 중 하나로 적어야 합니다.
@@ -536,8 +570,9 @@ DESCRIPTION_PRESETS_WITH_TYPE = [
     ("Assembly", "P"),
     ("Welding", "P"),
     ("Pretreatment", "P"),
+    ("Primer", "P"),
+    ("Intermediate Coat", "P"),
     ("Top Coat", "P"),
-    ("Mid Coat", "P"),
     ("Oven", "P"),
     ("Labeling/Printing", "P"),
     ("Deburring", "P"),
