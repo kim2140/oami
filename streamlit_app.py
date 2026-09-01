@@ -1,8 +1,14 @@
 # =============================================================================
 # Supplier OAMI Evaluation App
-# Version: 2.13.0
+# Version: 2.14.0
 #
 # [버전 히스토리 - 최신순]
+#   v2.14.0 - "프리셋은 타이핑 없이 셀렉만 되게 해달라, 모바일에서 키보드가
+#             뜨는게 불편하다"는 요청에 따라 Description 프리셋 위젯을
+#             st.selectbox(검색용 텍스트 입력 포함) → st.pills(탭만으로 고르는
+#             알약 버튼)로 변경. 키보드가 뜰 일이 없고, 화면 너비에 맞춰
+#             자동 줄바꿈되어 표시됨. 선택/해제 및 Description·Type 자동 채움
+#             동작은 기존과 동일하게 유지.
 #   v2.13.0 - Description 프리셋 목록을 실제 현장 20개 공정(STORAGING ~
 #             SHIPPING)으로 교체하고, 공정마다 지정된 Type(MH/Production/WIP)을
 #             함께 저장해 프리셋을 고르면 Description과 Type(MH/P/WIP)이
@@ -67,6 +73,21 @@
 # 공급업체 OAMI(Operation Assessment & Management Index) 평가 앱.
 # 프로세스별 Type(MH/P/WIP) 및 PAMI 점수(1~5)를 입력하고
 # Google Sheets(클라우드) + 서버 로컬 파일에 이중 백업.
+#
+# [v2.14.0 변경사항 - Description 프리셋을 타이핑 없는 탭 방식(pills)으로 변경]
+#   - "이 프리셋은 타이핑이 필요 없는데 셀렉만 할 수 있게 바꿀 수 있을까?
+#     타이핑이 나오니 모바일로 하기 불편하다"는 피드백에 따라 추가.
+#   - 원인: st.selectbox는 화면에는 드롭다운처럼 보이지만 내부적으로 검색용
+#     텍스트 입력창이 함께 있는 컴포넌트라, 모바일에서 탭하면 항상 키보드가
+#     함께 올라오고, 입력한 글자와 일치하는 옵션이 없으면 "No results"가 뜸.
+#   - st.pills(선택 항목들을 알약 모양 버튼으로 늘어놓고 탭만으로 고르는
+#     위젯)로 교체. 텍스트 입력창 자체가 없어 키보드가 뜨지 않고, 20개 항목이
+#     화면 너비에 맞게 자동으로 줄바꿈되어 표시됨.
+#   - st.pills는 선택 안 한 상태를 문자열이 아니라 파이썬 None으로 표현하므로
+#     apply_description_preset()의 판별 조건을 이에 맞게 수정. Description·
+#     Type 자동 채움 동작(v2.13.0) 자체는 그대로 유지.
+#   - 이미 선택한 알약을 다시 탭하면 선택이 해제됨(그래도 Description 칸에
+#     이미 채워진 글자는 지워지지 않고 그대로 남음).
 #
 # [v2.13.0 변경사항 - Description 프리셋을 실제 20개 공정 + Type 매핑으로 교체]
 #   - 사용자가 준 실제 공정 목록(20개, 각 공정마다 MH/Production/WIP Type 지정)
@@ -478,6 +499,10 @@ DESCRIPTION_PRESETS_WITH_TYPE = [
 DESCRIPTION_PRESETS = [name for name, _ in DESCRIPTION_PRESETS_WITH_TYPE]
 # 공정명 → Type 조회용 딕셔너리 (apply_description_preset()에서 사용)
 DESCRIPTION_PRESET_TYPE_MAP = dict(DESCRIPTION_PRESETS_WITH_TYPE)
+# [v2.14.0] "아무것도 안 고른 상태"를 나타내던 안내 문구용 상수였으나,
+# st.selectbox → st.pills로 바꾸면서 더 이상 필요 없어짐(pills는 선택 안 한
+# 상태를 문자열이 아니라 파이썬 None으로 표현하기 때문). 과거 버전과 코드
+# 흐름을 추적하기 쉽도록 상수 자체는 남겨두되, 위젯/콜백에서는 사용하지 않음.
 DESCRIPTION_PRESET_PLACEHOLDER = "-- Select a preset (optional) --"
 
 # 백업 보관 기간 (일)
@@ -1106,14 +1131,15 @@ def delete_current_process():
 # 않으므로, 폼 바깥에 둔다).
 # =====================================================================
 def apply_description_preset():
-    """드롭다운에서 프리셋을 고르면 즉시 Description 입력칸을 그 문구로
-    채운다 (드롭다운 자신은 리셋하지 않고 고른 값을 그대로 유지). 사용자는
-    이후 이어서 타이핑하거나, 전부 지우고 새로 쓸 수 있다.
+    """프리셋(알약 버튼)을 탭하면 즉시 Description 입력칸을 그 문구로 채운다.
+    사용자는 이후 이어서 타이핑하거나, 전부 지우고 새로 쓸 수 있다.
     [v2.13.0] 추가: 고른 공정에 매핑된 Type(MH/P/WIP)이 있으면 Type 라디오
     버튼도 함께 자동 선택한다. Type은 일반 라디오 버튼이라 자동 선택 후에도
-    잠기지 않으므로, 실제 상황이 다르면 그대로 클릭해서 바꿀 수 있다."""
-    selected = st.session_state.get("desc_preset_select", DESCRIPTION_PRESET_PLACEHOLDER)
-    if selected and selected != DESCRIPTION_PRESET_PLACEHOLDER:
+    잠기지 않으므로, 실제 상황이 다르면 그대로 클릭해서 바꿀 수 있다.
+    [v2.14.0] 위젯을 st.selectbox → st.pills로 바꾸면서, 값이 없을 때
+    "플레이스홀더 문자열"이 아니라 파이썬 None으로 오도록 로직 변경."""
+    selected = st.session_state.get("desc_preset_select")
+    if selected:
         st.session_state.p_desc_input = selected
         # [v2.13.0] 프리셋에 매핑된 Type이 있으면 같이 자동 선택
         mapped_type = DESCRIPTION_PRESET_TYPE_MAP.get(selected)
@@ -1423,12 +1449,19 @@ if st.session_state.is_evaluating:
     # (자세한 이유는 apply_description_preset() 함수 주석 참고)
     # st.form 밖에 있어야 선택 즉시 반영되므로, 폼 시작 전에 배치한다.
     # =====================================================================
-    st.selectbox(
+    # [v2.14.0] "타이핑이 필요없이 셀렉만 되게, 모바일에서 키보드가 뜨는게
+    # 불편하다"는 피드백에 따라 st.selectbox(검색용 텍스트 입력이 딸려있는
+    # 드롭다운) → st.pills(탭만으로 고르는 알약 모양 버튼들)로 변경. 키보드가
+    # 뜰 일이 아예 없고, 20개 항목이 화면 너비에 맞춰 자동으로 줄바꿈되어
+    # 표시된다. 다시 탭하면 선택 해제도 가능(그래도 Description 칸에 이미
+    # 채워진 글자는 그대로 남아있음).
+    st.pills(
         "📋 Description Preset (optional)",
-        options=[DESCRIPTION_PRESET_PLACEHOLDER] + DESCRIPTION_PRESETS,
+        options=DESCRIPTION_PRESETS,
+        selection_mode="single",
         key="desc_preset_select",
         on_change=apply_description_preset,
-        help="Pick a preset to fill the Description field below right away. "
+        help="Tap a preset to fill the Description field below right away. "
              "You can keep typing after it, or clear it and write your own."
     )
 
