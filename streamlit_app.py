@@ -1,8 +1,13 @@
 # =============================================================================
 # Supplier OAMI Evaluation App
-# Version: 2.14.0
+# Version: 2.15.0
 #
 # [버전 히스토리 - 최신순]
+#   v2.15.0 - "프리셋 글자가 전부 대문자로 되어있어서 보기 좀 그렇다"는
+#             피드백에 따라 공정명 표기를 전부 대문자(STORAGING 등)에서
+#             첫 글자만 대문자(Storaging 등)로 변경. 버튼에 보이는 글자와
+#             Description에 실제로 채워지는 글자가 항상 같으므로 둘 다 함께
+#             바뀜. 목록 순서/Type 매핑 내용 자체는 변경 없음.
 #   v2.14.0 - "프리셋은 타이핑 없이 셀렉만 되게 해달라, 모바일에서 키보드가
 #             뜨는게 불편하다"는 요청에 따라 Description 프리셋 위젯을
 #             st.selectbox(검색용 텍스트 입력 포함) → st.pills(탭만으로 고르는
@@ -73,6 +78,16 @@
 # 공급업체 OAMI(Operation Assessment & Management Index) 평가 앱.
 # 프로세스별 Type(MH/P/WIP) 및 PAMI 점수(1~5)를 입력하고
 # Google Sheets(클라우드) + 서버 로컬 파일에 이중 백업.
+#
+# [v2.15.0 변경사항 - 프리셋 표기를 대문자 → 첫 글자만 대문자로 변경]
+#   - "이게 너무 대문자로 쓰여있어서 좀 그런데"라는 피드백에 따라 추가.
+#   - DESCRIPTION_PRESETS_WITH_TYPE(파일 상단 상수)의 공정명 표기를
+#     "STORAGING" → "Storaging"처럼 첫 글자만 대문자로 수정. ("Pick & Place",
+#     "Heat Treatment", "Labeling/Printing"처럼 단어가 여러 개인 경우는 각
+#     단어 첫 글자를 대문자로 함)
+#   - 이 목록은 프리셋 버튼(pills)에 보이는 글자이자 Description 칸에 실제로
+#     들어가는 글자이기도 해서, 여기 한 곳만 고치면 화면 표시와 저장되는
+#     내용이 함께 바뀜. Type 매핑 및 순서는 이전과 동일.
 #
 # [v2.14.0 변경사항 - Description 프리셋을 타이핑 없는 탭 방식(pills)으로 변경]
 #   - "이 프리셋은 타이핑이 필요 없는데 셀렉만 할 수 있게 바꿀 수 있을까?
@@ -468,32 +483,36 @@ VALID_SCORES = {1, 2, 3, 4, 5}
 # 맞춰 "P"로 변환해서 저장함. 프리셋을 고르면 Description뿐 아니라 Type도
 # 자동으로 함께 선택된다(자세한 내용은 apply_description_preset() 참고). Type은
 # 자동 선택 후에도 잠기지 않으므로 실제와 다르면 직접 클릭해서 바꿀 수 있다.
+# [v2.15.0] "대문자로만 쓰여있어서 보기 좀 그렇다"는 피드백에 따라 공정명
+# 표기를 전부 대문자(STORAGING 등)에서 첫 글자만 대문자인 표기(Storaging 등)로
+# 변경. 버튼에 보이는 글자와 Description 칸에 실제로 채워지는 글자가 항상
+# 같으므로 여기 한 곳만 고치면 둘 다 같이 바뀐다.
 #
 # 목록은 아래에 (공정명, Type) 형태로 한 줄에 하나씩 적으면 됩니다.
 # Type은 반드시 "MH" / "P" / "WIP" 셋 중 하나로 적어야 합니다.
 # 필요하면 자유롭게 추가/삭제/수정해서 쓰세요.
 # =====================================================================
 DESCRIPTION_PRESETS_WITH_TYPE = [
-    ("STORAGING", "MH"),
-    ("FORKLIFTING", "MH"),
-    ("LOADING", "MH"),
-    ("PICK & PLACE", "MH"),
-    ("MOLDING", "P"),
-    ("TRIMMING", "P"),
-    ("REPLENISHING", "MH"),
-    ("STAMPING", "P"),
-    ("REMOVE", "WIP"),
-    ("CONVEYOR", "WIP"),
-    ("HEAT TREATMENT", "P"),
-    ("UNLOADING", "MH"),
-    ("ASSEMBLY", "P"),
-    ("WELDING", "P"),
-    ("LABELING/PRINTING", "P"),
-    ("DEBURRING", "P"),
-    ("FINISHING", "P"),
-    ("INSPECTION", "P"),
-    ("PACKAGING", "P"),
-    ("SHIPPING", "MH"),
+    ("Storaging", "MH"),
+    ("Forklifting", "MH"),
+    ("Loading", "MH"),
+    ("Pick & Place", "MH"),
+    ("Molding", "P"),
+    ("Trimming", "P"),
+    ("Replenishing", "MH"),
+    ("Stamping", "P"),
+    ("Remove", "WIP"),
+    ("Conveyor", "WIP"),
+    ("Heat Treatment", "P"),
+    ("Unloading", "MH"),
+    ("Assembly", "P"),
+    ("Welding", "P"),
+    ("Labeling/Printing", "P"),
+    ("Deburring", "P"),
+    ("Finishing", "P"),
+    ("Inspection", "P"),
+    ("Packaging", "P"),
+    ("Shipping", "MH"),
 ]
 # 기존 코드(selectbox 등)와의 호환을 위해 이름만 뽑은 리스트도 함께 준비
 DESCRIPTION_PRESETS = [name for name, _ in DESCRIPTION_PRESETS_WITH_TYPE]
