@@ -1,8 +1,16 @@
 # =============================================================================
 # Supplier OAMI Evaluation App
-# Version: 2.17.0
+# Version: 2.18.0
 #
 # [버전 히스토리 - 최신순]
+#   v2.18.0 - Description 프리셋 목록/순서 정리 요청 반영: Forklifting·Shipping
+#             삭제, "Pick & Place" → "Feeding"으로 교체, Stamping 다음에
+#             "Piecing" 추가(Type: P로 지정), 제조업 공정 흐름(자재 투입 →
+#             가공 → 조립/용접 → 도장 → 마무리/품질 → 포장)에 맞춰 전체 순서
+#             재배치. 추가로 "Unloading(입고 하역)은 맨 앞, Loading(출하
+#             상차)은 Packaging 바로 뒤 맨 끝"이라는 요청에 따라 두 항목의
+#             위치를 각각 맨 앞/맨 뒤로 이동. (총 27개 → 26개: 2개 삭제 +
+#             1개 추가, 나머지 항목의 Type 매핑은 그대로 유지)
 #   v2.17.0 - "상도/중도/하도 영문 표기가 맞냐"는 질문에 따라 웹 검색으로 도장
 #             공정 용어를 재검증(출처는 아래 [v2.17.0 변경사항] 참고). 검증
 #             결과 하도=Primer, 중도=Intermediate Coat, 상도=Topcoat가 맞고,
@@ -91,6 +99,23 @@
 # 공급업체 OAMI(Operation Assessment & Management Index) 평가 앱.
 # 프로세스별 Type(MH/P/WIP) 및 PAMI 점수(1~5)를 입력하고
 # Google Sheets(클라우드) + 서버 로컬 파일에 이중 백업.
+#
+# [v2.18.0 변경사항 - 프리셋 목록 정리 및 제조 흐름 기준 순서 재배치]
+#   - "forklifting 빼고, Pick&Place보다 Feeding으로 하고 Shipping은 빼도 될
+#     것 같은데, Stamping 다음에 Piecing 넣어주고, 제조업 시작과 끝을 생각해서
+#     순서를 조금 바꿔줄래"라는 요청에 따라 추가.
+#   - Forklifting, Shipping 삭제. "Pick & Place" → "Feeding"으로 교체(이름만
+#     변경, Type "MH"는 그대로).
+#   - Stamping 바로 뒤에 "Piecing" 신규 추가. 정확히 어떤 공정인지, Type을
+#     무엇으로 할지 사용자에게 확인 질문을 드렸으나 순서 조정 답변만 받고
+#     Type에 대한 명시적 답은 없어, Stamping(P) 바로 뒤에 이어지는 생산
+#     공정이라는 문맥상 Type "P"(생산)로 지정함. 실제와 다르면 프리셋 선택
+#     후 Type 라디오 버튼에서 바로 고쳐서 쓰거나, 이 상수를 직접 수정하면 됨.
+#   - 전체 순서를 "자재 투입 → 가공 → 조립/용접 → 도장 → 마무리/품질 → 포장"
+#     흐름으로 재배치. 추가로 "Unloading(입고 하역)은 맨 앞, Loading(출하
+#     상차)은 Packaging 바로 뒤 맨 끝"이라는 요청에 따라 두 항목을 각각 맨
+#     앞/맨 뒤로 이동(입고 시 트럭에서 내리는 것=Unloading, 출하 시 트럭에
+#     싣는 것=Loading이라는 의미로 해석함).
 #
 # [v2.17.0 변경사항 - 도장 공정 영문 용어 재검증 및 수정(하도 Primer 추가)]
 #   - "상도가 그게 아니라 Primer 뭐 이런건데, 하도는 Clear, 중도는 Spray
@@ -547,26 +572,30 @@ VALID_SCORES = {1, 2, 3, 4, 5}
 # 추가하고 "Mid Coat"를 "Intermediate Coat"로 수정. 순서도 실제 도장 공정
 # 흐름대로 Pretreatment → Primer → Intermediate Coat → Top Coat → Oven으로
 # 바로잡음.
+# [v2.18.0] Forklifting·Shipping 삭제, "Pick & Place"→"Feeding" 교체, Stamping
+# 뒤에 "Piecing"(Type: P, 자세한 사유는 파일 상단 [v2.18.0 변경사항] 참고)
+# 추가. 전체 순서를 "자재 투입 → 가공 → 조립/용접 → 도장 → 마무리/품질 →
+# 포장" 흐름으로 재배치하고, Unloading(입고 하역)은 맨 앞, Loading(출하
+# 상차)은 Packaging 바로 뒤 맨 끝으로 이동.
 #
 # 목록은 아래에 (공정명, Type) 형태로 한 줄에 하나씩 적으면 됩니다.
 # Type은 반드시 "MH" / "P" / "WIP" 셋 중 하나로 적어야 합니다.
 # 필요하면 자유롭게 추가/삭제/수정해서 쓰세요.
 # =====================================================================
 DESCRIPTION_PRESETS_WITH_TYPE = [
+    ("Unloading", "MH"),
     ("Storaging", "MH"),
-    ("Forklifting", "MH"),
-    ("Loading", "MH"),
-    ("Pick & Place", "MH"),
+    ("Feeding", "MH"),
+    ("Replenishing", "MH"),
     ("Molding", "P"),
     ("Trimming", "P"),
     ("Milling", "P"),
     ("Turning", "P"),
-    ("Replenishing", "MH"),
     ("Stamping", "P"),
+    ("Piecing", "P"),
     ("Remove", "WIP"),
     ("Conveyor", "WIP"),
     ("Heat Treatment", "P"),
-    ("Unloading", "MH"),
     ("Assembly", "P"),
     ("Welding", "P"),
     ("Pretreatment", "P"),
@@ -579,7 +608,7 @@ DESCRIPTION_PRESETS_WITH_TYPE = [
     ("Finishing", "P"),
     ("Inspection", "P"),
     ("Packaging", "P"),
-    ("Shipping", "MH"),
+    ("Loading", "MH"),
 ]
 # 기존 코드(selectbox 등)와의 호환을 위해 이름만 뽑은 리스트도 함께 준비
 DESCRIPTION_PRESETS = [name for name, _ in DESCRIPTION_PRESETS_WITH_TYPE]
