@@ -1,8 +1,14 @@
 # =============================================================================
 # Supplier OAMI Evaluation App
-# Version: 2.15.0
+# Version: 2.16.0
 #
 # [버전 히스토리 - 최신순]
+#   v2.16.0 - "가공 중에 밀링/선반이 있고, Paint에 상도/중도/오븐/전처리도
+#             넣어달라"는 요청에 따라 Description 프리셋 5개 추가(20개 →
+#             25개): Milling, Turning(선반은 Turning으로 표기, 사용자 확인
+#             거침), Pretreatment, Top Coat, Mid Coat, Oven. Milling/Turning은
+#             Molding/Trimming 뒤에, 도장 관련 4개는 Welding 뒤에 배치. 전부
+#             Type "P"(생산)로 지정.
 #   v2.15.0 - "프리셋 글자가 전부 대문자로 되어있어서 보기 좀 그렇다"는
 #             피드백에 따라 공정명 표기를 전부 대문자(STORAGING 등)에서
 #             첫 글자만 대문자(Storaging 등)로 변경. 버튼에 보이는 글자와
@@ -78,6 +84,20 @@
 # 공급업체 OAMI(Operation Assessment & Management Index) 평가 앱.
 # 프로세스별 Type(MH/P/WIP) 및 PAMI 점수(1~5)를 입력하고
 # Google Sheets(클라우드) + 서버 로컬 파일에 이중 백업.
+#
+# [v2.16.0 변경사항 - 가공(Milling/Turning) + 도장(Paint) 공정 5개 프리셋 추가]
+#   - "가공 중에 밀링이 있고 선반이 있고, 이거랑 Paint 상도/중도/오븐/전처리
+#     이런거 넣어줄래"라는 요청에 따라 추가.
+#   - "선반"을 영어로 어떻게 표기할지(Turning vs Lathe) 확인 질문을 드렸고,
+#     "Turning(추천)"으로 결정.
+#   - DESCRIPTION_PRESETS_WITH_TYPE(파일 상단 상수)에 아래 5개를 추가해
+#     총 20개 → 25개로 늘림:
+#       · Milling, Turning → 기존 가공 그룹(Molding, Trimming) 바로 뒤에 배치
+#       · Pretreatment(전처리), Top Coat(상도), Mid Coat(중도), Oven(오븐,
+#         도장 후 건조/경화 공정) → Welding 바로 뒤에 도장 공정 순서대로 배치
+#         (전처리 → 상도 → 중도 → 오븐 순은 실제 도장 공정 흐름과 유사)
+#   - 5개 전부 실제 생산 공정이므로 Type은 모두 "P"로 지정. 프리셋을 고르면
+#     기존과 동일하게 Description과 Type이 함께 자동으로 채워짐.
 #
 # [v2.15.0 변경사항 - 프리셋 표기를 대문자 → 첫 글자만 대문자로 변경]
 #   - "이게 너무 대문자로 쓰여있어서 좀 그런데"라는 피드백에 따라 추가.
@@ -487,6 +507,12 @@ VALID_SCORES = {1, 2, 3, 4, 5}
 # 표기를 전부 대문자(STORAGING 등)에서 첫 글자만 대문자인 표기(Storaging 등)로
 # 변경. 버튼에 보이는 글자와 Description 칸에 실제로 채워지는 글자가 항상
 # 같으므로 여기 한 곳만 고치면 둘 다 같이 바뀐다.
+# [v2.16.0] "가공 중에 밀링/선반이 있고, 도장(Paint)에 상도/중도/오븐/전처리도
+# 있다"는 요청에 따라 5개 추가(총 25개). 가공(Molding/Trimming) 뒤에
+# Milling(밀링)·Turning(선반, 선삭 공정)을 추가하고, Welding 뒤에 도장 관련
+# 공정 Pretreatment(전처리)·Top Coat(상도)·Mid Coat(중도)·Oven(오븐, 도장 후
+# 건조/경화)을 순서대로 추가함. "선반"의 영문 표기는 사용자 확인을 거쳐
+# "Turning"으로 결정. 전부 실제 생산 공정이므로 Type은 전부 "P"로 지정.
 #
 # 목록은 아래에 (공정명, Type) 형태로 한 줄에 하나씩 적으면 됩니다.
 # Type은 반드시 "MH" / "P" / "WIP" 셋 중 하나로 적어야 합니다.
@@ -499,6 +525,8 @@ DESCRIPTION_PRESETS_WITH_TYPE = [
     ("Pick & Place", "MH"),
     ("Molding", "P"),
     ("Trimming", "P"),
+    ("Milling", "P"),
+    ("Turning", "P"),
     ("Replenishing", "MH"),
     ("Stamping", "P"),
     ("Remove", "WIP"),
@@ -507,6 +535,10 @@ DESCRIPTION_PRESETS_WITH_TYPE = [
     ("Unloading", "MH"),
     ("Assembly", "P"),
     ("Welding", "P"),
+    ("Pretreatment", "P"),
+    ("Top Coat", "P"),
+    ("Mid Coat", "P"),
+    ("Oven", "P"),
     ("Labeling/Printing", "P"),
     ("Deburring", "P"),
     ("Finishing", "P"),
