@@ -1,8 +1,21 @@
 # =============================================================================
 # Supplier OAMI Evaluation App
-# Version: 2.11.0
+# Version: 2.13.0
 #
 # [버전 히스토리 - 최신순]
+#   v2.13.0 - Description 프리셋 목록을 실제 현장 20개 공정(STORAGING ~
+#             SHIPPING)으로 교체하고, 공정마다 지정된 Type(MH/Production/WIP)을
+#             함께 저장해 프리셋을 고르면 Description과 Type(MH/P/WIP)이
+#             동시에 자동으로 채워지도록 개선. 자동으로 채워진 뒤에도 Type은
+#             잠기지 않으므로 필요하면 계속 직접 눌러서 바꿀 수 있음.
+#   v2.12.0 - "코드 상 기본값은 3단계로 두고, 사람(기기)마다 다른 기본값을 쓸 수
+#             없냐"는 요청에 따라 v2.11.1(기본값 2단계로 변경)을 되돌려 다시
+#             3단계로 고정. (브라우저 localStorage로 기기별 자동 기억까지
+#             시도했으나 Streamlit 컴포넌트의 iframe 보안 제약으로 자동 복원이
+#             동작하지 않아 제외함 — 아래 [v2.12.0 변경사항] 상세 참고, 대안은
+#             사용자 확인 후 별도 반영 예정)
+#   v2.11.1 - (v2.12.0에서 되돌림) 새로 접속했을 때 적용되는 글자 크기 기본값을
+#             3단계(17px)에서 2단계(15px)로 임시 변경했었음.
 #   v2.11.0 - 글자 크기 조절을 Small/Medium/Large 라디오 3단계에서 "−"/"+"
 #             줌인·줌아웃 5단계(13/15/17/20/24px)로 변경. 가장 작은 크기는
 #             기존과 동일(13px)하게 유지하고, 가장 큰 크기는 기존 Large
@@ -54,6 +67,55 @@
 # 공급업체 OAMI(Operation Assessment & Management Index) 평가 앱.
 # 프로세스별 Type(MH/P/WIP) 및 PAMI 점수(1~5)를 입력하고
 # Google Sheets(클라우드) + 서버 로컬 파일에 이중 백업.
+#
+# [v2.13.0 변경사항 - Description 프리셋을 실제 20개 공정 + Type 매핑으로 교체]
+#   - 사용자가 준 실제 공정 목록(20개, 각 공정마다 MH/Production/WIP Type 지정)
+#     대로 업데이트해달라는 요청에 따라 추가.
+#   - "프리셋을 고르면 Type(MH/P/WIP)도 같이 자동 선택되게 할지" 확인 질문에
+#     대해 "프리셋으로 셀렉이 되게 하되, 이후에 직접 바꾸는 것도 가능해야
+#     한다"고 답변하셔서, 자동 선택은 하되 잠그지는 않는 방식으로 구현.
+#   - DESCRIPTION_PRESETS_WITH_TYPE(파일 상단 상수)에 (공정명, Type) 쌍으로
+#     20개를 저장. "Production"은 Type 값 체계(MH/P/WIP)에 맞춰 "P"로 매핑.
+#   - apply_description_preset() 함수를 확장: 프리셋을 고르면 기존처럼
+#     Description 칸을 그 공정명으로 채우고, 추가로 그 공정에 매핑된 Type을
+#     찾아 Type 라디오 버튼도 함께 선택되도록 함.
+#   - Type은 일반 라디오 버튼이라 자동 선택 후에도 비활성화(disable)되지
+#     않으므로, 실제 상황이 표에 있는 것과 다르면 그대로 클릭해서 바꿀 수
+#     있음(요청하신 "변경도 가능해야 함" 조건 충족).
+#
+# [v2.12.0 변경사항 - 기본값 3단계로 복귀 + 사람(기기)별 기억 기능은 보류]
+#   - "3단계로 하고, 디폴트를 사람에 따라 바꿀 수 없냐"는 요청에 따라 작업.
+#   - v2.11.1에서 코드 기본값을 2단계로 바꿨던 것을 되돌려 다시 3단계로 고정
+#     (모든 사람에게 공통으로 보이는 "최초" 기본값은 3단계). 이 부분은 반영 완료.
+#   - "사람(기기)마다 마지막 선택값을 자동으로 기억했다가 다음에 새로 접속할
+#     때 그 값으로 시작하게" 하는 기능도 브라우저 localStorage를 이용해
+#     시도했으나, 실제로 Playwright(자동화 브라우저)로 테스트한 결과 다음과
+#     같은 이유로 "완전 자동 복원"은 정상 동작하지 않아 이번 버전에는
+#     포함하지 않음:
+#       · localStorage에 값을 "저장"하는 것은 성공하지만, 저장된 값으로
+#         화면을 자동으로 되돌리려면(=새 접속 시 자동 새로고침) 페이지를
+#         이동(navigate)시켜야 하는데, Streamlit이 내부적으로 만드는 컴포넌트
+#         iframe은 보안상 "부모 화면을 직접 이동시키는 권한(top-navigation)"이
+#         막혀 있어(브라우저 콘솔에 "sandboxed... allow-top-navigation... not
+#         set" 오류 발생) 자동 새로고침이 불가능함을 확인함.
+#   - 이 문제를 우회하려면 별도의 작은 프론트엔드 파일(정적 index.html 등)을
+#     추가로 만들어 Streamlit의 "양방향 커스텀 컴포넌트" 방식으로 다시 구현해야
+#     하는데, 이 경우 지금처럼 .py 파일 하나만 복사해서 붙여넣는 방식이 아니라
+#     파일을 2개(폴더 구조 포함) 함께 배포해야 해서, "전체를 복사/붙여넣기
+#     하기 쉽게" 만들어달라는 기존 요청과 상충됨. 이 트레이드오프를 사용자에게
+#     안내하고 방향을 확인받은 뒤 다음 버전에서 반영할 예정.
+#
+# [v2.11.1 변경사항 - 신규 접속 시 글자 크기 기본값을 2단계로 변경]
+#   - "기본값이 계속 3단계로 남는 거냐, 2단계가 더 나은데 2단계로 하면 다시
+#     3단계로 바뀌는 거냐"는 질문에 따라 추가.
+#   - FONT_ZOOM_DEFAULT_INDEX는 URL에 ?zoom= 값이 아예 없는 "새 접속"일 때만
+#     쓰이는 값. 사용자가 -/+ 버튼을 한 번이라도 누르면 그 즉시 선택한 단계가
+#     URL 쿼리 파라미터(?zoom=단계번호)에 저장되고, 그 다음부터는 화면 전환은
+#     물론 브라우저를 새로고침(F5)해도 항상 그 저장된 값을 읽어와 그대로
+#     유지됨 — FONT_ZOOM_DEFAULT_INDEX는 더 이상 참조되지 않으므로 3단계로
+#     "되돌아가는" 일은 없음(v2.6.0부터 있던 동작과 동일).
+#   - 다만 "새로 여는 화면"의 시작 값 자체는 2단계가 더 낫다는 의견에 따라
+#     FONT_ZOOM_DEFAULT_INDEX를 2(3단계)에서 1(2단계, 15px)로 변경.
 #
 # [v2.11.0 변경사항 - 글자 크기 조절을 줌인/줌아웃 5단계로 변경]
 #   - "zoom in/out을 5단계로 해서 더 키우자. 가장 작은 사이즈는 더 줄일
@@ -202,6 +264,11 @@ import time
 import logging
 import io
 import socket  # [v2.4.0] 인터넷 연결 여부 확인 및 소켓 타임아웃 설정용
+# [v2.12.0] 글자 크기를 브라우저 localStorage로 기기별 자동 기억하려고
+# streamlit.components.v1을 시도했으나, 아래 FONT_ZOOM_DEFAULT_INDEX 근처의
+# 주석 및 파일 상단 [v2.12.0 변경사항]에 적은 이유로 이번 버전엔 포함하지
+# 않아 이 import도 사용하지 않음(참고용으로 주석만 남김).
+# import streamlit.components.v1 as components
 
 # =====================================================================
 # 로깅 설정
@@ -247,7 +314,11 @@ st.markdown("### 📝 Supplier OAMI Evaluation App")
 # [v2.11.0] 1단계(가장 작음, 13px) ~ 5단계(가장 큼, 24px). 1단계 값은 기존
 # Small과 동일하게 유지, 5단계는 기존 Large(20px)보다 더 크게 설정.
 FONT_ZOOM_LEVELS = [13, 15, 17, 20, 24]  # px 단위, 인덱스 0~4 = 1~5단계
-FONT_ZOOM_DEFAULT_INDEX = 2  # 3단계(17px, 기존 Medium과 비슷한 수준)를 기본값으로 사용
+# [v2.12.0] "코드 상 기본값은 3단계로 두고, 대신 사람(기기)마다 마지막으로
+# 고른 값을 기억하게 해달라"는 요청에 따라 v2.11.1(기본값을 2단계로 변경)을
+# 되돌리고 다시 3단계로 고정. 개인별 기본값은 아래 sync_zoom_with_local_storage()의
+# 브라우저 localStorage 기억 기능으로 처리한다.
+FONT_ZOOM_DEFAULT_INDEX = 2  # 이 앱을 처음 접속하는 모든 사람에게 공통으로 보이는 기본값 = 3단계(17px)
 
 # [v2.6.0] "Large로 바꾸고 새로고침(F5)하면 다시 Medium으로 돌아간다"는
 # 피드백에 따라 추가 (session_state는 새로고침 시 초기화되므로, 새로고침에도
@@ -370,32 +441,43 @@ VALID_SCORES = {1, 2, 3, 4, 5}
 # 입고/보관 → 자재 이동 → 절삭/성형/가공 → 접합 → 표면처리 → 품질 →
 # 포장 순서로, 제조 공정 흐름을 따라가며 훑어볼 수 있게 배치.
 # 세부 내용은 프리셋 적용 후 이어서 직접 타이핑(key-in)하면 됨.
+# [v2.13.0] 실제 현장에서 쓰는 20개 공정 목록(사용자 제공)으로 전면 교체.
+# 이번엔 각 공정마다 Type(MH/Production/WIP)도 같이 지정되어 있어서, (공정명,
+# Type) 쌍의 리스트로 저장한다. "Production"은 이 앱의 Type 값 체계(MH/P/WIP)에
+# 맞춰 "P"로 변환해서 저장함. 프리셋을 고르면 Description뿐 아니라 Type도
+# 자동으로 함께 선택된다(자세한 내용은 apply_description_preset() 참고). Type은
+# 자동 선택 후에도 잠기지 않으므로 실제와 다르면 직접 클릭해서 바꿀 수 있다.
 #
-# 목록은 아래에 한 줄에 하나씩, 따옴표 안에 적고 쉼표로 구분하면 됩니다.
+# 목록은 아래에 (공정명, Type) 형태로 한 줄에 하나씩 적으면 됩니다.
+# Type은 반드시 "MH" / "P" / "WIP" 셋 중 하나로 적어야 합니다.
 # 필요하면 자유롭게 추가/삭제/수정해서 쓰세요.
 # =====================================================================
-DESCRIPTION_PRESETS = [
-    "Receiving",
-    "Storage",
-    "Moving",
-    "Feeding",
-    "Loading",
-    "Unloading",
-    "Cutting",
-    "Drilling",
-    "Grinding",
-    "Machining",
-    "Molding",
-    "Stamping",
-    "Assembly",
-    "Welding",
-    "Soldering",
-    "Painting",
-    "Cleaning",
-    "Inspection",
-    "Testing",
-    "Packaging",
+DESCRIPTION_PRESETS_WITH_TYPE = [
+    ("STORAGING", "MH"),
+    ("FORKLIFTING", "MH"),
+    ("LOADING", "MH"),
+    ("PICK & PLACE", "MH"),
+    ("MOLDING", "P"),
+    ("TRIMMING", "P"),
+    ("REPLENISHING", "MH"),
+    ("STAMPING", "P"),
+    ("REMOVE", "WIP"),
+    ("CONVEYOR", "WIP"),
+    ("HEAT TREATMENT", "P"),
+    ("UNLOADING", "MH"),
+    ("ASSEMBLY", "P"),
+    ("WELDING", "P"),
+    ("LABELING/PRINTING", "P"),
+    ("DEBURRING", "P"),
+    ("FINISHING", "P"),
+    ("INSPECTION", "P"),
+    ("PACKAGING", "P"),
+    ("SHIPPING", "MH"),
 ]
+# 기존 코드(selectbox 등)와의 호환을 위해 이름만 뽑은 리스트도 함께 준비
+DESCRIPTION_PRESETS = [name for name, _ in DESCRIPTION_PRESETS_WITH_TYPE]
+# 공정명 → Type 조회용 딕셔너리 (apply_description_preset()에서 사용)
+DESCRIPTION_PRESET_TYPE_MAP = dict(DESCRIPTION_PRESETS_WITH_TYPE)
 DESCRIPTION_PRESET_PLACEHOLDER = "-- Select a preset (optional) --"
 
 # 백업 보관 기간 (일)
@@ -1026,10 +1108,17 @@ def delete_current_process():
 def apply_description_preset():
     """드롭다운에서 프리셋을 고르면 즉시 Description 입력칸을 그 문구로
     채운다 (드롭다운 자신은 리셋하지 않고 고른 값을 그대로 유지). 사용자는
-    이후 이어서 타이핑하거나, 전부 지우고 새로 쓸 수 있다."""
+    이후 이어서 타이핑하거나, 전부 지우고 새로 쓸 수 있다.
+    [v2.13.0] 추가: 고른 공정에 매핑된 Type(MH/P/WIP)이 있으면 Type 라디오
+    버튼도 함께 자동 선택한다. Type은 일반 라디오 버튼이라 자동 선택 후에도
+    잠기지 않으므로, 실제 상황이 다르면 그대로 클릭해서 바꿀 수 있다."""
     selected = st.session_state.get("desc_preset_select", DESCRIPTION_PRESET_PLACEHOLDER)
     if selected and selected != DESCRIPTION_PRESET_PLACEHOLDER:
         st.session_state.p_desc_input = selected
+        # [v2.13.0] 프리셋에 매핑된 Type이 있으면 같이 자동 선택
+        mapped_type = DESCRIPTION_PRESET_TYPE_MAP.get(selected)
+        if mapped_type in VALID_TYPES:
+            st.session_state.p_type_input = mapped_type
 
 
 def process_form_submit():
