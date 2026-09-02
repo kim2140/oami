@@ -1,8 +1,25 @@
 # =============================================================================
 # Supplier OAMI Evaluation App
-# Version: 2.20.0
+# Version: 2.21.0
 #
 # [버전 히스토리 - 최신순]
+#   v2.21.0 - "Process Name과 Description이 Type/Score/Remark/Save 버튼과
+#             같은 테두리 박스 안에 들어가 있어야 한다"는 스크린샷 피드백에
+#             따라 레이아웃 조정. v2.20.0까지는 Process Name·Description이
+#             테두리 없는 영역에, Type/Score/Remark/Save만 st.form의 테두리
+#             박스 안에 있어서 시각적으로 분리되어 보였음. 이번 변경으로
+#             st.form을 테두리만 있는 일반 컨테이너(st.container(border=True))
+#             로 교체하고, 그 안에 Process Name → Description → Clear
+#             Description 버튼 → Type → Score → Remark → Save/Update 버튼을
+#             전부 넣어 하나의 박스로 통일함(사용자 확인: "프리셋은 박스
+#             밖(추천)" 선택 — Description Preset 버튼은 지금처럼 박스 바깥
+#             위쪽에 그대로 둠). st.form을 걷어냈지만 v2.19.0에서 고친
+#             "폼 안 위젯은 제출 전까지 session_state에 반영 안 됨" 문제는
+#             재발하지 않음 — Process Name/Description은 원래부터 폼 밖에
+#             있었고 그대로 유지, Type/Score/Remark는 st.form 없이도 즉시
+#             session_state에 반영되는 일반 위젯이라 프리셋 이어붙이기·Type
+#             자동 매핑 동작에 영향 없음. 제출 버튼만 st.form_submit_button
+#             에서 일반 st.button(on_click=process_form_submit)으로 교체.
 #   v2.20.0 - "Clear를 프리셋 안에 넣지 말고, Description을 Process Name
 #             아래에 두고 거기에 Clear 버튼을 만들어달라"는 요청에 따라
 #             레이아웃 조정. v2.19.0에서 프리셋 목록 맨 끝에 있던
@@ -119,6 +136,30 @@
 # 공급업체 OAMI(Operation Assessment & Management Index) 평가 앱.
 # 프로세스별 Type(MH/P/WIP) 및 PAMI 점수(1~5)를 입력하고
 # Google Sheets(클라우드) + 서버 로컬 파일에 이중 백업.
+#
+# [v2.21.0 변경사항 - Process Name/Description을 테두리 박스 안으로 통합]
+#   - 스크린샷 피드백: "박스 안에 Process Name하고 Description 들어가
+#     있어야지" — v2.20.0까지는 Process Name·Description이 테두리 없는
+#     영역에 있고, Type/Score/Remark/Save 버튼만 st.form의 테두리 박스 안에
+#     있어서 하나의 입력 폼인데도 시각적으로 둘로 나뉘어 보였다.
+#   - 디자인 확정 전 AskUserQuestion으로 "프리셋 버튼까지 박스 안에 넣을지"
+#     확인 → 사용자가 "프리셋은 박스 밖(추천)"을 선택. 즉 Description Preset
+#     pills는 지금처럼 박스 바깥 위쪽에 그대로 두고, 그 아래 Process Name부터
+#     Save/Update 버튼까지만 하나의 박스로 묶기로 확정.
+#   - 구현: st.form("pami_input_form", ...)을 걷어내고
+#     st.container(border=True)로 교체. 그 컨테이너 안에 Process Name →
+#     Description → Clear Description 버튼 → Type → Score → Remark →
+#     Save/Update 버튼을 전부 배치.
+#   - st.form_submit_button(btn_text, on_click=process_form_submit)은
+#     일반 st.button(btn_text, on_click=process_form_submit)으로 교체(일반
+#     컨테이너에는 form 전용 submit 버튼을 쓸 수 없음).
+#   - 주의: st.form을 없애도 v2.19.0에서 고쳤던 "폼 안 위젯은 제출 전까지
+#     session_state 미반영" 문제는 재발하지 않는다. Process Name/Description은
+#     원래부터 폼 밖에 있던 위젯을 그대로 컨테이너 안으로 옮긴 것뿐이고,
+#     Type/Score/Remark 라디오·텍스트 입력도 일반 컨테이너 안에서는 다른 값
+#     변경 시 즉시 session_state에 반영되므로 프리셋 이어붙이기·Type 자동
+#     매핑·Remark 입력 모두 기존과 동일하게 동작한다(직접 브라우저 테스트로
+#     재확인 완료).
 #
 # [v2.20.0 변경사항 - Clear 버튼 분리 + Process Name/Description 순서 복원]
 #   - "Preset에 Clear를 넣지 말고, Description은 Process Name 아래에 위치
@@ -1712,6 +1753,12 @@ if st.session_state.is_evaluating:
     # 자유롭게 배치할 수 있으므로 이렇게 옮겨서 원래 있던 순서(Process Name
     # → Description)를 그대로 되살렸다. Type/Score/Remark/제출 버튼만 폼 안에
     # 남음.
+    # [v2.21.0] "Process Name/Description이 Type/Score/Remark/Save와 같은
+    # 테두리 박스 안에 있어야 한다"는 스크린샷 피드백에 따라, st.form 자체를
+    # st.container(border=True)로 교체하고 그 안에 Process Name부터 Save
+    # 버튼까지 전부 배치했다. Description Preset pills는 사용자 확정에 따라
+    # 계속 이 박스 밖(위)에 남는다. 자세한 내용은 파일 상단 [v2.21.0 변경사항]
+    # 참고.
     # =====================================================================
     st.markdown("**📝 Step 2: PAMI Input per Process**")
     if st.session_state.pami_form_error:
@@ -1726,15 +1773,19 @@ if st.session_state.is_evaluating:
         help="Tap a preset to add it to the end of the Description field below "
              "(you can tap several in a row, or type your own text first)."
     )
-    st.text_input("Process Name (Optional)", key="p_name_input")
-    st.text_input("Description - Required*", placeholder="Enter details, or pick a preset above...", key="p_desc_input")
-    st.button(DESCRIPTION_PRESET_CLEAR_LABEL, on_click=clear_description_field,
-              help="Empty the Description field (Process Name/Type/Score/Remark are not affected).")
 
     # =====================================================================
-    # PAMI 입력 폼 (Process Name·Description은 위에서 이미 입력받았으므로 제외)
+    # [v2.21.0] Process Name ~ Save 버튼까지를 테두리 박스 하나로 통합.
+    # 예전 st.form(...) 대신 st.container(border=True)를 사용 — form이
+    # 아니므로 st.form_submit_button 대신 일반 st.button을 쓴다. Description
+    # Preset pills는 사용자 확정에 따라 이 박스 밖(위)에 그대로 둔다.
     # =====================================================================
-    with st.form("pami_input_form", clear_on_submit=False):
+    with st.container(border=True):
+        st.text_input("Process Name (Optional)", key="p_name_input")
+        st.text_input("Description - Required*", placeholder="Enter details, or pick a preset above...", key="p_desc_input")
+        st.button(DESCRIPTION_PRESET_CLEAR_LABEL, on_click=clear_description_field,
+                  help="Empty the Description field (Process Name/Type/Score/Remark are not affected).")
+
         st.write("Type - Required*")
         st.radio("Type", options=["MH", "P", "WIP"], index=None, horizontal=True,
                  label_visibility="collapsed", key="p_type_input")
@@ -1743,7 +1794,7 @@ if st.session_state.is_evaluating:
                  label_visibility="collapsed", key="p_score_input")
         st.text_input("Remark (Optional)", key="p_remark_input")
         btn_text = "Save New Process" if st.session_state.is_inserting else "Update Process"
-        st.form_submit_button(btn_text, on_click=process_form_submit)
+        st.button(btn_text, on_click=process_form_submit)
 
     # =====================================================================
     # Cancel / Delete 버튼
