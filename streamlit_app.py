@@ -1,8 +1,22 @@
 # =============================================================================
 # Supplier OAMI Evaluation App
-# Version: 2.22.0
+# Version: 2.23.0
 #
 # [버전 히스토리 - 최신순]
+#   v2.23.0 - "모바일로 보니까 무조건 한 줄 내려가는 거 같아. 그럼 그냥 한 줄
+#             내리고 오른쪽으로 보내줘"라는 피드백에 따라 Clear Description
+#             아이콘 버튼 배치 방식 변경. v2.22.0의 st.columns([6,1]) 방식은
+#             화면이 넓을 때(PC)는 Description과 같은 줄에 나왔지만, 좁은
+#             모바일 화면(약 380px 이하)에서는 Streamlit이 컬럼을 자동으로
+#             세로로 쌓아버려서 버튼이 왼쪽 정렬로 아래 줄에 내려가는,
+#             화면 크기에 따라 다른 결과가 나왔음(직접 테스트로 확인). 이를
+#             컬럼 대신 st.container(key="clear_desc_row") + CSS
+#             (align-items:flex-end)로 교체해서, 화면 크기와 상관없이 항상
+#             "Description 아래 자기만의 줄 + 그 줄의 오른쪽 끝"에 오도록
+#             통일함. 버튼이 자기 줄을 독차지하고 오른쪽 끝에 떨어져 있어서
+#             Description을 쓰고 다음 칸으로 넘어갈 때 실수로 누를 확률이
+#             더 줄어듦. 버튼 동작(clear_description_field 호출)은 이전과
+#             동일.
 #   v2.22.0 - "Clear Description 버튼이 커서 쓰다가 실수로 누를 수 있을 것
 #             같다"는 스크린샷 피드백에 따라, Description 아래에 가로로 길게
 #             있던 "🗑️ Clear Description" 버튼을 없애고, Description 입력칸
@@ -150,6 +164,27 @@
 # 공급업체 OAMI(Operation Assessment & Management Index) 평가 앱.
 # 프로세스별 Type(MH/P/WIP) 및 PAMI 점수(1~5)를 입력하고
 # Google Sheets(클라우드) + 서버 로컬 파일에 이중 백업.
+#
+# [v2.23.0 변경사항 - Clear Description 버튼을 화면 크기 무관하게 오른쪽 정렬]
+#   - v2.22.0에서 st.columns([6,1])로 Description 오른쪽에 버튼을 배치했으나,
+#     사용자가 실제 휴대폰으로 확인해보니 좁은 화면에서는 Streamlit이 컬럼을
+#     자동으로 세로로 쌓아서 버튼이 왼쪽 정렬로 아래 줄에 내려간다는 점을
+#     발견(직접 브라우저 테스트로도 재확인함, 약 380px 이하에서 재현).
+#   - 사용자 피드백: "모바일로 보니까 무조건 한 줄 내려가는 거 같아. 그럼
+#     그냥 한 줄 내리고 오른쪽으로 보내줘 그럼 더 실수로 삭제할 확률을
+#     줄일테니까" — 화면 크기에 따라 다르게 보이는 대신, 아예 처음부터
+#     "Description 아래 자기만의 줄 + 오른쪽 끝" 하나로 통일하기로 함.
+#   - 구현: st.columns 대신 st.container(key="clear_desc_row")를 사용.
+#     Streamlit은 컨테이너에 key를 주면 해당 블록의 감싸는 div에
+#     "st-key-<key>" 클래스를 자동으로 붙여주므로, 이 클래스를 selector로
+#     삼아 st.markdown(..., unsafe_allow_html=True)으로 CSS
+#     "display:flex; align-items:flex-end;"를 적용했다. Streamlit의 세로
+#     블록(stVerticalBlock)은 기본적으로 flex-direction이 column이라 주축이
+#     세로 방향이므로, 자식(버튼)을 가로(교차축) 오른쪽으로 붙이려면
+#     justify-content가 아니라 align-items를 써야 한다는 점에 유의.
+#   - 컬럼 분할 자체가 없는 방식이라 화면 폭에 따라 줄바꿈 여부가 달라질
+#     일이 없고, PC/모바일 모두 항상 같은 모양(Description 아래 줄, 오른쪽
+#     끝)으로 보인다.
 #
 # [v2.22.0 변경사항 - Clear Description 버튼을 작은 아이콘 버튼으로 축소]
 #   - 스크린샷 피드백: "쓰다가 실수로 삭제할 수 있을 것 같은데, Description
@@ -1819,19 +1854,28 @@ if st.session_state.is_evaluating:
         st.text_input("Process Name (Optional)", key="p_name_input")
         # [v2.22.0] "Clear Description 버튼이 너무 커서 실수로 누를 것 같다"는
         # 피드백에 따라, Description 아래에 있던 가로로 긴 버튼(글자+아이콘)을
-        # 없애고 Description 입력칸 오른쪽 같은 줄에 휴지통 아이콘만 있는 작은
-        # 버튼으로 교체. st.columns로 입력칸(넓게)과 버튼(좁게)을 한 줄에
-        # 배치하고, 버튼 쪽에는 라벨이 없어 위로 붙어 보이므로 st.write("")로
-        # Description 라벨 높이만큼 빈 줄을 넣어 입력칸과 버튼의 세로 위치를
-        # 맞췄다. 버튼 자체는 여전히 clear_description_field()를 호출하므로
-        # 동작(= Description 칸만 비움)은 이전과 동일하고, 크기와 위치만 바뀜.
-        desc_col, clear_col = st.columns([6, 1])
-        with desc_col:
-            st.text_input("Description - Required*", placeholder="Enter details, or pick a preset above...", key="p_desc_input")
-        with clear_col:
-            st.write("")  # Description 라벨 높이만큼 맞추는 spacer
+        # 없애고 휴지통 아이콘만 있는 작은 버튼으로 교체(처음엔 st.columns로
+        # Description 오른쪽 같은 줄에 배치 시도).
+        # [v2.23.0] "모바일로 보니 (좁은 화면에서 컬럼이 자동으로 줄바꿈되어)
+        # 무조건 한 줄 아래로 내려가더라, 그럼 차라리 한 줄 내리고 오른쪽으로
+        # 보내달라"는 피드백에 따라 방식 변경. st.columns([6,1])는 화면 폭에
+        # 따라 "PC에서는 같은 줄, 좁은 화면에서는 왼쪽 정렬로 줄바꿈"이라는
+        # 일관되지 않은 결과를 냈었다(직접 브라우저 테스트로 확인). 이를
+        # 화면 크기와 무관하게 "Description 아래 자기만의 줄 + 그 줄의 오른쪽
+        # 끝"으로 통일하기 위해, 컬럼 대신 st.container(key=...)로 버튼 전용
+        # 줄을 만들고, 그 컨테이너에 CSS(align-items:flex-end)를 적용해 안의
+        # 버튼을 항상 오른쪽으로 붙였다. st.container에 key를 주면 Streamlit이
+        # 해당 블록에 "st-key-<key>" CSS 클래스를 자동으로 붙여주는 점을
+        # 이용함(별도 컬럼 분할이 없으므로 좁은 화면에서도 줄바꿈으로 인한
+        # 위치 흔들림이 없다).
+        st.text_input("Description - Required*", placeholder="Enter details, or pick a preset above...", key="p_desc_input")
+        with st.container(key="clear_desc_row"):
             st.button("🗑️", key="clear_desc_icon_btn", on_click=clear_description_field,
                       help=f"{DESCRIPTION_PRESET_CLEAR_LABEL} (Process Name/Type/Score/Remark are not affected).")
+        st.markdown(
+            "<style>div.st-key-clear_desc_row{display:flex; align-items:flex-end;}</style>",
+            unsafe_allow_html=True
+        )
 
         st.write("Type - Required*")
         st.radio("Type", options=["MH", "P", "WIP"], index=None, horizontal=True,
