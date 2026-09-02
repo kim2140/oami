@@ -1,8 +1,16 @@
 # =============================================================================
 # Supplier OAMI Evaluation App
-# Version: 2.19.0
+# Version: 2.20.0
 #
 # [버전 히스토리 - 최신순]
+#   v2.20.0 - "Clear를 프리셋 안에 넣지 말고, Description을 Process Name
+#             아래에 두고 거기에 Clear 버튼을 만들어달라"는 요청에 따라
+#             레이아웃 조정. v2.19.0에서 프리셋 목록 맨 끝에 있던
+#             "🗑️ Clear"를 pills 옵션에서 빼고, Description 입력칸 바로
+#             아래의 독립된 버튼(🗑️ Clear Description)으로 옮김. Process
+#             Name도 폼 밖으로 옮겨 Description 바로 위에 배치해서 원래
+#             순서(Process Name → Description)를 되살림. Type/Score/Remark/
+#             제출 버튼만 폼 안에 남음.
 #   v2.19.0 - Description 프리셋 동작을 "하나 고르면 끝(toggle)"에서 "누를
 #             때마다 뒤에 이어붙이는(append) 방식"으로 전면 변경. 예를 들어
 #             Unloading을 누르고 Storaging을 누르면 Description에 두 개가
@@ -111,6 +119,24 @@
 # 공급업체 OAMI(Operation Assessment & Management Index) 평가 앱.
 # 프로세스별 Type(MH/P/WIP) 및 PAMI 점수(1~5)를 입력하고
 # Google Sheets(클라우드) + 서버 로컬 파일에 이중 백업.
+#
+# [v2.20.0 변경사항 - Clear 버튼 분리 + Process Name/Description 순서 복원]
+#   - "Preset에 Clear를 넣지 말고, Description은 Process Name 아래에 위치
+#     하게 하고, 거기에 Clear 버튼을 만들어달라"는 요청에 따라 추가.
+#   - st.pills의 options에서 DESCRIPTION_PRESET_CLEAR_LABEL("🗑️ Clear
+#     Description")을 제거 — 이제 프리셋 버튼들은 순수하게 26개 공정명만
+#     보여준다.
+#   - apply_description_preset()에서 "전체 지우기" 분기를 떼어내
+#     clear_description_field()라는 별도 함수로 분리하고, Description 입력칸
+#     바로 아래에 독립된 st.button(on_click=clear_description_field)으로
+#     배치. 이 버튼은 Description 칸만 비우고 Process Name/Type/Score/Remark
+#     는 그대로 둔다.
+#   - v2.19.0에서 "Description을 st.form 밖으로 옮기며" Process Name보다
+#     위에 놓이게 됐던 순서를 되돌리기 위해, Process Name도 함께 폼 밖으로
+#     옮겨서 Description 바로 위에 배치. Process Name은 append 문제와 무관
+#     하지만, 폼 밖 위젯끼리는 원하는 순서로 자유롭게 배치할 수 있어서 이
+#     방법으로 원래 순서(Process Name → Description)를 되살렸다. Type/
+#     Score/Remark/제출 버튼만 계속 폼 안에 남는다.
 #
 # [v2.19.0 변경사항 - Description 프리셋을 "선택"에서 "이어붙이기"로 변경]
 #   - "누르면 그냥 타이핑이 되게 해줘, unloading 누르고 storaging 누르면 두개
@@ -666,10 +692,12 @@ DESCRIPTION_PRESET_PLACEHOLDER = "-- Select a preset (optional) --"
 
 # [v2.19.0] "프리셋을 누르면 토글처럼 선택 상태로 남지 말고, 누를 때마다 그냥
 # Description 칸 뒤에 글자가 타이핑되듯 추가되게 해달라"는 요청에 따라 추가.
-# 프리셋 버튼들(pills) 맨 끝에 이 항목을 하나 더 붙여서, 이걸 누르면 프리셋을
-# 추가하는 대신 Description 칸을 통째로 지운다(자세한 내용은
-# apply_description_preset() 참고).
-DESCRIPTION_PRESET_CLEAR_LABEL = "🗑️ Clear"
+# 처음엔 프리셋 버튼들(pills) 맨 끝에 이 항목을 하나 더 붙여서 사용했으나,
+# [v2.20.0] "Clear를 프리셋 안에 넣지 말고 Description 옆에 별도 버튼으로
+# 만들어달라"는 요청에 따라 pills 옵션에서는 빼고, Description 입력칸 바로
+# 옆의 독립된 st.button 라벨로만 사용한다(자세한 내용은
+# clear_description_field() 참고).
+DESCRIPTION_PRESET_CLEAR_LABEL = "🗑️ Clear Description"
 
 # 백업 보관 기간 (일)
 BACKUP_RETENTION_DAYS = 14
@@ -1313,36 +1341,40 @@ def apply_description_preset():
       "Unloading, Storaging"이 된다.
     - Type은 매번 "가장 최근에 누른 프리셋"의 매핑값으로 갱신되므로, 결과적으로
       마지막으로 누른 프리셋 기준으로 Type이 맞춰진다.
-    - DESCRIPTION_PRESET_CLEAR_LABEL("🗑️ Clear")을 누르면 프리셋을 추가하는
-      대신 Description 칸을 통째로 비운다(Type은 건드리지 않음 — 지우고 싶은
-      건 문구지 방금 고른 Type이 아닐 수 있으므로).
     - 매번 처리가 끝나면 pills 자신의 선택 상태(desc_preset_select)를 다시
       None으로 되돌려, 버튼이 눌린 채로 "선택된 것처럼" 남아있지 않고 다음
       탭을 위한 중립 상태로 돌아가게 한다("toggle 형식은 필요 없다"는 요청
       반영). 위젯 자기 자신의 on_change 콜백 안에서 자기 자신의
       session_state를 되돌리는 것은 Streamlit에서 허용되는 패턴이다(다음
-      rerun에서 위젯이 다시 그려지기 전에 실행되기 때문)."""
+      rerun에서 위젯이 다시 그려지기 전에 실행되기 때문).
+    [v2.20.0] "Clear를 프리셋 안에 넣지 말고 Description 옆에 별도 버튼으로
+    만들어달라"는 요청에 따라, 전체 지우기 기능은 이 함수에서 분리해
+    clear_description_field()로 옮김 — 이 함수는 이제 "프리셋 추가"만 담당."""
     selected = st.session_state.get("desc_preset_select")
     if selected:
-        if selected == DESCRIPTION_PRESET_CLEAR_LABEL:
-            # [v2.19.0] "마지막에 delete키를 하나 넣어달라"는 요청으로 추가된
-            # 전체 지우기 동작. Description 칸만 비우고 Type은 그대로 둔다.
-            st.session_state.p_desc_input = ""
-        else:
-            # [v2.19.0] 기존 내용 뒤에 이어붙이기. 끝에 남아있을 수 있는 콤마/
-            # 공백은 정리한 뒤 ", "로 구분해서 붙인다.
-            current = (st.session_state.get("p_desc_input") or "").rstrip()
-            if current.endswith(","):
-                current = current[:-1].rstrip()
-            st.session_state.p_desc_input = f"{current}, {selected}" if current else selected
-            # [v2.13.0] 프리셋에 매핑된 Type이 있으면 같이 자동 선택
-            # [v2.19.0] 여러 번 누르면 "가장 최근에 누른" 프리셋 기준으로 갱신됨
-            mapped_type = DESCRIPTION_PRESET_TYPE_MAP.get(selected)
-            if mapped_type in VALID_TYPES:
-                st.session_state.p_type_input = mapped_type
+        # [v2.19.0] 기존 내용 뒤에 이어붙이기. 끝에 남아있을 수 있는 콤마/
+        # 공백은 정리한 뒤 ", "로 구분해서 붙인다.
+        current = (st.session_state.get("p_desc_input") or "").rstrip()
+        if current.endswith(","):
+            current = current[:-1].rstrip()
+        st.session_state.p_desc_input = f"{current}, {selected}" if current else selected
+        # [v2.13.0] 프리셋에 매핑된 Type이 있으면 같이 자동 선택
+        # [v2.19.0] 여러 번 누르면 "가장 최근에 누른" 프리셋 기준으로 갱신됨
+        mapped_type = DESCRIPTION_PRESET_TYPE_MAP.get(selected)
+        if mapped_type in VALID_TYPES:
+            st.session_state.p_type_input = mapped_type
         # [v2.19.0] 버튼을 누른 채로("선택된 상태로") 남지 않도록 매번 중립
         # 상태(None)로 되돌림 — toggle처럼 보이지 않게 하기 위함
         st.session_state.desc_preset_select = None
+
+
+def clear_description_field():
+    """[v2.20.0] "Clear 버튼을 프리셋 목록이 아니라 Description 옆에 따로
+    만들어달라"는 요청에 따라 apply_description_preset()에서 분리한 전체
+    지우기 동작. Description 칸만 비우고 Process Name/Type/Score/Remark는
+    건드리지 않는다(지우고 싶은 건 문구지 이미 골라둔 다른 값들이 아닐 수
+    있으므로)."""
+    st.session_state.p_desc_input = ""
 
 
 def process_form_submit():
@@ -1655,10 +1687,14 @@ if st.session_state.is_evaluating:
     # [v2.19.0] "누르면 토글처럼 선택 상태로 남지 말고, 누를 때마다 Description
     # 뒤에 이어붙여달라(예: Unloading 누르고 Storaging 누르면 둘 다 나오게).
     # 직접 타이핑한 글자 뒤에 프리셋을 눌러도 이어붙게 하고, Type은 마지막에
-    # 누른 프리셋 기준으로, 마지막에 전체 지우기 버튼도 달라"는 요청에 따라
-    # 동작을 전면 변경. 맨 끝에 DESCRIPTION_PRESET_CLEAR_LABEL("🗑️ Clear")을
-    # 추가해 Description을 통째로 비우는 용도로 쓴다. 자세한 동작은
-    # apply_description_preset() 참고.
+    # 누른 프리셋 기준으로 맞춰달라"는 요청에 따라 동작을 전면 변경. 자세한
+    # 동작은 apply_description_preset() 참고.
+    # [v2.20.0] "Clear를 프리셋 안에 넣지 말고 Description 옆에 별도 버튼으로
+    # 만들어달라, Description은 Process Name 아래에 위치하게 해달라"는 요청에
+    # 따라 v2.19.0에서 프리셋 목록 맨 끝에 있던 DESCRIPTION_PRESET_CLEAR_LABEL
+    # ("🗑️ Clear")을 프리셋 옵션에서 빼고, Description 입력칸 바로 옆의 독립된
+    # 버튼(clear_description_field() 콜백)으로 옮김. 자세한 내용은 파일 상단
+    # [v2.20.0 변경사항] 참고.
     # =====================================================================
     # [v2.19.0] Description 입력칸을 st.form 밖으로 이동.
     # 이유: st.form 안의 위젯은 "제출(Submit)" 버튼을 누르기 전까지는 직접
@@ -1669,9 +1705,13 @@ if st.session_state.is_evaluating:
     # 타이핑한 내용을 못 보고 그냥 덮어써 버리는 문제가 실제로 있었음(직접
     # 브라우저 테스트로 재현/확인함). 프리셋 픽커가 원래 폼 밖에 있는 것과
     # 같은 이유로, Description도 폼 밖으로 옮겨서 타이핑한 즉시(블러 시)
-    # session_state에 반영되게 함. Process Name/Type/Score/Remark/제출 버튼은
-    # 이 문제와 무관하므로 그대로 폼 안에 둠 — 화면상 순서만 Description이
-    # Process Name보다 먼저 보이도록 살짝 바뀜.
+    # session_state에 반영되게 함.
+    # [v2.20.0] "Description을 Process Name 아래에 위치시켜달라"는 요청에
+    # 따라 Process Name도 함께 폼 밖으로 옮겨서 Description 바로 위에 배치.
+    # Process Name은 이 append 문제와 무관하지만, 폼 밖 위젯끼리는 순서를
+    # 자유롭게 배치할 수 있으므로 이렇게 옮겨서 원래 있던 순서(Process Name
+    # → Description)를 그대로 되살렸다. Type/Score/Remark/제출 버튼만 폼 안에
+    # 남음.
     # =====================================================================
     st.markdown("**📝 Step 2: PAMI Input per Process**")
     if st.session_state.pami_form_error:
@@ -1679,21 +1719,22 @@ if st.session_state.is_evaluating:
 
     st.pills(
         "📋 Description Preset (optional)",
-        options=DESCRIPTION_PRESETS + [DESCRIPTION_PRESET_CLEAR_LABEL],
+        options=DESCRIPTION_PRESETS,
         selection_mode="single",
         key="desc_preset_select",
         on_change=apply_description_preset,
         help="Tap a preset to add it to the end of the Description field below "
-             "(you can tap several in a row, or type your own text first). "
-             "Tap 🗑️ Clear to empty the Description field."
+             "(you can tap several in a row, or type your own text first)."
     )
+    st.text_input("Process Name (Optional)", key="p_name_input")
     st.text_input("Description - Required*", placeholder="Enter details, or pick a preset above...", key="p_desc_input")
+    st.button(DESCRIPTION_PRESET_CLEAR_LABEL, on_click=clear_description_field,
+              help="Empty the Description field (Process Name/Type/Score/Remark are not affected).")
 
     # =====================================================================
-    # PAMI 입력 폼 (Description은 위에서 이미 입력받았으므로 제외)
+    # PAMI 입력 폼 (Process Name·Description은 위에서 이미 입력받았으므로 제외)
     # =====================================================================
     with st.form("pami_input_form", clear_on_submit=False):
-        st.text_input("Process Name (Optional)", key="p_name_input")
         st.write("Type - Required*")
         st.radio("Type", options=["MH", "P", "WIP"], index=None, horizontal=True,
                  label_visibility="collapsed", key="p_type_input")
