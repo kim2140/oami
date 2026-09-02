@@ -1,8 +1,22 @@
 # =============================================================================
 # Supplier OAMI Evaluation App
-# Version: 2.21.0
+# Version: 2.22.0
 #
 # [버전 히스토리 - 최신순]
+#   v2.22.0 - "Clear Description 버튼이 커서 쓰다가 실수로 누를 수 있을 것
+#             같다"는 스크린샷 피드백에 따라, Description 아래에 가로로 길게
+#             있던 "🗑️ Clear Description" 버튼을 없애고, Description 입력칸
+#             오른쪽 같은 줄에 휴지통 아이콘(🗑️)만 있는 작은 버튼으로 교체.
+#             st.columns([6, 1])로 입력칸과 버튼을 한 줄에 배치하고, 버튼
+#             쪽에 spacer를 넣어 세로 위치를 입력칸과 맞춤. 툴팁(help)에는
+#             기존 "Clear Description" 문구를 그대로 남겨 무슨 버튼인지는
+#             바로 확인 가능. 버튼이 눌렸을 때의 동작(clear_description_field
+#             호출 → Description 칸만 비움)은 그대로 유지, 크기/위치만 변경.
+#             (참고: PC처럼 화면이 넓을 때는 Description 오른쪽 같은 줄에
+#             나오지만, 약 380px 이하의 좁은 휴대폰 화면에서는 Streamlit이
+#             컬럼을 자동으로 세로로 쌓아서 버튼이 Description 아래 줄로
+#             내려간다 — 크기가 작아진 효과는 그대로 유지되므로, 사용자
+#             확인 후 이 상태로 유지하기로 확정함.)
 #   v2.21.0 - "Process Name과 Description이 Type/Score/Remark/Save 버튼과
 #             같은 테두리 박스 안에 들어가 있어야 한다"는 스크린샷 피드백에
 #             따라 레이아웃 조정. v2.20.0까지는 Process Name·Description이
@@ -136,6 +150,27 @@
 # 공급업체 OAMI(Operation Assessment & Management Index) 평가 앱.
 # 프로세스별 Type(MH/P/WIP) 및 PAMI 점수(1~5)를 입력하고
 # Google Sheets(클라우드) + 서버 로컬 파일에 이중 백업.
+#
+# [v2.22.0 변경사항 - Clear Description 버튼을 작은 아이콘 버튼으로 축소]
+#   - 스크린샷 피드백: "쓰다가 실수로 삭제할 수 있을 것 같은데, Description
+#     옆에 작은 휴지통 버튼만 만들어줄 수 있을까?" — v2.21.0까지는
+#     "🗑️ Clear Description"이 Description 입력칸 바로 아래에 가로로 긴
+#     버튼으로 있어서, Description을 다 쓰고 아래로 이동하다가 실수로 누르기
+#     쉬운 위치/크기였다.
+#   - 디자인 확정 전 AskUserQuestion으로 버튼 위치를 확인 → "Description
+#     오른쪽 같은 줄(추천)"을 선택. 즉 입력칸 아래 별도 줄이 아니라, 입력칸과
+#     같은 줄 오른쪽 끝에 작게 배치하기로 확정.
+#   - 구현: st.columns([6, 1])로 한 줄을 나눠, 왼쪽(넓은 칸)에는 그대로
+#     Description text_input, 오른쪽(좁은 칸)에는 라벨 없이 "🗑️" 아이콘만
+#     있는 st.button을 배치. 오른쪽 칸에는 Description처럼 위에 라벨이
+#     없으므로, st.write("")로 빈 줄을 하나 넣어 라벨 높이만큼 아래로 내려서
+#     입력칸과 버튼의 세로 위치(베이스라인)를 맞췄다.
+#   - 버튼을 눌렀을 때 호출되는 함수(clear_description_field)와 동작
+#     (Description 칸만 비우고 Process Name/Type/Score/Remark는 그대로 둠)은
+#     전혀 바뀌지 않았다 — 버튼의 겉모습(라벨 텍스트 → 아이콘만, 전체 폭 →
+#     좁은 폭, 아래 줄 → 오른쪽 같은 줄)만 바뀐 것. 버튼 위에 마우스를
+#     올리면(모바일은 길게 누르면) 여전히 "Clear Description" 툴팁이 뜨므로
+#     무슨 버튼인지는 계속 알 수 있다.
 #
 # [v2.21.0 변경사항 - Process Name/Description을 테두리 박스 안으로 통합]
 #   - 스크린샷 피드백: "박스 안에 Process Name하고 Description 들어가
@@ -1782,9 +1817,21 @@ if st.session_state.is_evaluating:
     # =====================================================================
     with st.container(border=True):
         st.text_input("Process Name (Optional)", key="p_name_input")
-        st.text_input("Description - Required*", placeholder="Enter details, or pick a preset above...", key="p_desc_input")
-        st.button(DESCRIPTION_PRESET_CLEAR_LABEL, on_click=clear_description_field,
-                  help="Empty the Description field (Process Name/Type/Score/Remark are not affected).")
+        # [v2.22.0] "Clear Description 버튼이 너무 커서 실수로 누를 것 같다"는
+        # 피드백에 따라, Description 아래에 있던 가로로 긴 버튼(글자+아이콘)을
+        # 없애고 Description 입력칸 오른쪽 같은 줄에 휴지통 아이콘만 있는 작은
+        # 버튼으로 교체. st.columns로 입력칸(넓게)과 버튼(좁게)을 한 줄에
+        # 배치하고, 버튼 쪽에는 라벨이 없어 위로 붙어 보이므로 st.write("")로
+        # Description 라벨 높이만큼 빈 줄을 넣어 입력칸과 버튼의 세로 위치를
+        # 맞췄다. 버튼 자체는 여전히 clear_description_field()를 호출하므로
+        # 동작(= Description 칸만 비움)은 이전과 동일하고, 크기와 위치만 바뀜.
+        desc_col, clear_col = st.columns([6, 1])
+        with desc_col:
+            st.text_input("Description - Required*", placeholder="Enter details, or pick a preset above...", key="p_desc_input")
+        with clear_col:
+            st.write("")  # Description 라벨 높이만큼 맞추는 spacer
+            st.button("🗑️", key="clear_desc_icon_btn", on_click=clear_description_field,
+                      help=f"{DESCRIPTION_PRESET_CLEAR_LABEL} (Process Name/Type/Score/Remark are not affected).")
 
         st.write("Type - Required*")
         st.radio("Type", options=["MH", "P", "WIP"], index=None, horizontal=True,
