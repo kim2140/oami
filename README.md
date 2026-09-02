@@ -2,215 +2,136 @@
 
 # 📝 Supplier OAMI Evaluation App
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://oamigmscore.streamlit.app/)
+A web app for auditors to record a supplier's per-process **OAMI** (process-quality) evaluations on-site — Type (MH / P / WIP) + PAMI score (1–5) + description/remark per process — with automatic **local + cloud** dual backup so no work is lost if your device or connection drops.
 
-A field evaluation tool for supplier audits based on the OAMI (Operation Assessment & Management Index).  
-Supports both mobile and PC, with automatic cloud backup and Outlook email export.
-
----
-
-## 🚀 Launch App
-
-**https://oamigmscore.streamlit.app/**
+*(Documentation last verified against app version **2.21.0**.)*
 
 ---
 
-## 📋 Key Features
+## 🔗 Open the App
+
+No installation needed — just open it in your browser:
+
+**👉 https://oamigmscore.streamlit.app/**
+
+It works on both PC and mobile browsers. Everything below describes how to use it once it's open.
+
+---
+
+## ✨ Features
 
 | Feature | Description |
 |---|---|
-| **Auto Cloud Backup** | Saves to Google Sheets instantly as you input |
-| **Session Restore** | Resume previous evaluation sessions |
-| **Excel Bulk Upload** | Register multiple processes at once |
-| **Circular Navigation** | Move freely between entries with Prev/Next |
-| **Mobile Text Copy** | One-tap copy for Outlook mobile app |
-| **PC Table Copy** | Copy as formatted HTML table |
-| **CSV Download** | Permanent local file export |
+| Dual backup | Every change is saved automatically to a local backup, and mirrored to the cloud in the background whenever you're online. |
+| Offline-safe | If the connection drops, the app keeps working and saving locally; it re-syncs to the cloud automatically once you're back online — no data is lost either way. |
+| Adjustable text size | A 5-level −/+ zoom control at the top of the app makes all text bigger or smaller; the setting is remembered for the session (via the page URL) so a refresh doesn't reset it. |
+| Tap-to-build description | 26 preset buttons, grouped by manufacturing flow (material handling → machining → assembly/welding → paint → finishing → quality → packaging/shipping), each tap appends its text to the Description field and can be combined with free typing. |
+| Auto Type suggestion | Selecting a Description preset also fills in the matching Type (MH/P/WIP) for you — you can still change it manually afterward. |
+| Bulk upload | Register many processes at once via an Excel template (download, fill in, upload). |
+| Resume in progress | Restore a session from its local or cloud backup (whichever is newer) within the retention window, to continue exactly where you left off. |
+| Mobile & PC export | Copy a plain-text summary (mobile-friendly) or an HTML table (PC-friendly) for email, or auto-fill an Outlook draft with one click. |
+| CSV export | Download the full evaluation as a CSV file at any time. |
 
 ---
 
-## 🛠️ How to Use
+## 🧭 How to Use
 
-### Step 1 — Enter Supplier & Evaluator Info
+### Step 0 — Adjust Text Size (optional)
 
-1. Open the app and locate **📌 Step 1: Supplier & Evaluator Info**
-2. Enter **Supplier Name** (required)
-3. Enter **Evaluator Name** (required)
-4. Click **Go Evaluation** → proceed to Step 2
+At the very top of the app, use the **🔠 Text Size** control (`−` / `A` / `+`) to pick from 5 font sizes. The center "A" shows the current step (e.g. `3/5`) at its actual size, so you can see the effect immediately. Your choice stays applied for the rest of the session.
 
-> ⚠️ Both fields are required to continue.
+### Step 1 — Supplier & Evaluator Info
 
----
+1. If a backup from the past 14 days exists (locally or in the cloud, whichever is newer), a **"Restore Selected Session"** option appears so you can pick it up where you left off.
+2. Enter **Supplier Name** and **Evaluator Name** (both required).
+3. Click **Go Evaluation** to start. If either field is empty, you'll see: *"🚨 Please enter both Supplier Name and Evaluator Name."*
 
-### Step 2 — Restore Previous Session (Optional)
+Once evaluation starts, a status caption tells you whether the cloud connection is active:
+- **☁️ Cloud sync: connected** — your data is backed up locally and to the cloud.
+- **📴 No internet connection** — your data is still being saved locally, and will sync to the cloud automatically once you're back online.
 
-If you have previously saved work, a backup list will appear automatically.
+### Step 2 — (Optional) Bulk Upload via Excel
 
-1. Select an entry from the **Restore previous session** dropdown
-   - `[☁️ Cloud]` — Google Sheets cloud backup
-   - `[🖥️ Local]` — Server local backup (last 14 days)
-2. Click **Restore Selected Session** → load previous data
+Open **📂 Bulk Upload via Excel** to register several processes at once:
 
-> 💡 After restoring, you can continue from where you left off.
+1. Click **📥 Download Excel Template** — it includes sample rows with the columns `Process Name / Description / Type / Score / Remark`.
+2. Fill it in and upload it with **Upload filled Excel template**.
+3. Click **🚀 Upload & Apply Data**. `Description`, `Type`, and `Score` are required columns; rows with an invalid Type or Score are skipped with a warning, and the rest are still applied.
 
----
+### Step 3 — Enter Each Process
 
-### Step 3 — Enter Processes (Individual)
+First, **Description Preset** — tap any of the 26 preset buttons (above the input box) to append that step's name to the Description field below (you can tap several in a row — e.g. tap *Unloading* then *Storaging* to get `"Unloading, Storaging"`). Tapping a preset also sets **Type** to match that preset's usual category (MH/P/WIP); the *last* preset you tap wins, and you can still change Type manually afterward.
 
-#### 3-1. Add a New Entry
+Then, inside the input box, fill in:
 
-| Field | Required | Description |
-|---|---|---|
-| **Process Name** | Optional | Process label (defaults to N/A if blank) |
-| **Description** | **Required** | Detailed description of the process |
-| **Type** | **Required** | Select `MH` / `P` / `WIP` |
-| **Score (1~5)** | **Required** | OAMI score (1 = lowest, 5 = highest) |
-| **Remark** | Optional | Additional notes |
+1. **Process Name** (optional) — a free-text label for the process/station.
+2. **Description** (required) — free-text; you can type here directly, edit around what the presets inserted, or clear it entirely with the **🗑️ Clear Description** button (this only clears Description — Process Name, Type, Score, and Remark are untouched).
+3. **Type** (required) — `MH` (Material Handling) / `P` (Production/Process) / `WIP` (Work In Process); pre-filled by the last preset tapped, but freely changeable.
+4. **Score (1–5)** (required) — the PAMI score for this process.
+5. **Remark** (optional) — any additional note.
+6. Click **Save New Process** (or **Update Process** if you're editing an existing entry).
 
-1. Fill in the form and click **Save New Process**
-2. A toast message confirms the save
-3. The form resets and waits for the next entry
+Use **🚫 Cancel** to discard an in-progress edit, or **🗑️ Delete** to remove a saved process (a confirmation step — **✔️ Yes, Delete** / **❌ Cancel** — appears before anything is removed).
 
-#### 3-2. Edit an Existing Entry
+### Step 4 — Evaluation Summary & Export
 
-1. Navigate to the target entry using **⬅️ Prev** / **Next ➡️**
-2. The form auto-fills with existing values
-3. Make changes and click **Update Process**
+Once you have at least one process saved:
 
-#### 3-3. Delete an Entry
-
-1. Navigate to the entry you want to delete
-2. Click **🗑️ Delete**
-3. Confirm by clicking **✔️ Yes, Delete**
-
-> ⚠️ Entry numbers (No.) are automatically reordered after deletion.
-
-#### 3-4. Navigation Buttons
-
-| Button | Action |
-|---|---|
-| **⬅️ Prev** | Go to previous entry (wraps to last from first) |
-| **Next ➡️** | Go to next entry (wraps to first from last) |
-| **➕ New** | Switch to new entry mode |
-| **🚫 Cancel** | Cancel new entry and return to current list |
+- **Total Processes** and **Total OAMI Average** (out of 5.0) are shown as metrics.
+- **📱 1. Mobile (Text)** tab — a plain-text summary you can copy with **📋 Copy Text for Outlook**, or paste manually.
+- **🖥️ 2. PC (Table)** tab — a formatted HTML table you can copy with **📋 Copy Table for Outlook** for pasting into an email as a table.
+- **📨 Open Outlook Mail App** — opens a new mail draft with the mobile text summary pre-filled in the body.
+- **📥 Download CSV Backup** — downloads the full record as a CSV file. A checkbox (checked by default) lets you also delete the temporary system backup file after downloading, since **the CSV file is the only permanent copy** — system backups are temporary and can be cleared at any time.
+- **🚨 Clear All Data (Start New)** — resets the app to start a fresh evaluation (with a confirmation step first). This also removes the current supplier's temporary backup.
 
 ---
 
-### Step 4 — Bulk Upload via Excel (Optional)
+## 💾 Backup & Data Policy
 
-Use this when you need to register many processes at once.
+| | Local backup | Google Sheets backup | CSV download |
+|---|---|---|---|
+| When it's saved | Automatically, after every change | Automatically, whenever online (best-effort) | Manually, on demand |
+| Persistence | Temporary — kept for the retention window, can be cleared | Temporary — kept for the retention window, can be cleared | **Permanent** — this is the only copy you should rely on long-term |
+| Requires internet | No | Yes | No |
 
-1. Expand the **📂 Bulk Upload via Excel** section
-2. Click **📥 Download Excel Template** and save the file
-3. Fill in the template:
-
-| Column | Required | Allowed Values |
-|---|---|---|
-| Process Name | Optional | Any text |
-| Description | **Required** | Any text |
-| Type | **Required** | `MH` / `P` / `WIP` |
-| Score | **Required** | Integer `1` ~ `5` |
-| Remark | Optional | Any text |
-
-4. Upload the completed file under **Upload filled Excel template**
-5. Click **🚀 Upload & Apply Data**
-
-> ⚠️ Rows with invalid Type or Score values are skipped automatically. A warning message lists which rows were skipped.
+Restoring a past session (Step 1) always uses whichever of the local or cloud backup is more recently updated, so you never lose progress no matter which one was last online.
 
 ---
 
-### Step 5 — Review Results & Export
-
-Once at least one process is saved, the **📊 Evaluation Summary** section appears.
-
-#### Summary Metrics
-
-| Metric | Description |
-|---|---|
-| **Total Processes** | Number of registered processes |
-| **Total OAMI Average** | Overall average score (out of 5.0) |
-
-#### 📱 Mobile — Copy as Text
-
-1. Select the **📱 1. Mobile (Text)** tab
-2. Click **📋 Copy Text for Outlook** → copied to clipboard
-3. Open Outlook app → paste into email body
-4. Or click **📨 Open Outlook Mail App** → subject and body auto-filled
-
-#### 🖥️ PC — Copy as Table
-
-1. Select the **🖥️ 2. PC (Table)** tab
-2. Click **📋 Copy Table for Outlook** → HTML table copied
-3. Paste into Outlook desktop app body
-
-> ⚠️ The PC table does not support auto-fill in the Mail app. Paste manually.
-
-#### 📥 Download CSV (Permanent Storage)
-
-1. Check the **🗑️ Delete system backup file after download** checkbox
-   - ✅ Checked (recommended): server backup deleted after download
-   - ☐ Unchecked: server backup retained
-2. Click **📥 Download CSV Backup**
-3. File name format: `OAMI_{SupplierName}_{Date}.csv`
-
----
-
-### Step 6 — Reset (Start New Evaluation)
-
-1. Click **🚨 Clear All Data (Start New)**
-2. Confirm by clicking **✔️ Yes, Clear Data**
-3. All data and backups are deleted — returns to Step 1
-
-> ⚠️ Download your CSV before resetting. This action cannot be undone.
-
----
-
-## 💾 Backup Policy
-
-| Type | Storage | Retention |
-|---|---|---|
-| Auto Backup | Google Sheets (Cloud) | Until manually deleted |
-| Local Backup | Server temporary storage | **14 days** |
-| CSV Download | User's device | Permanent |
-
-> ⚠️ Local backups are **automatically deleted after 14 days**. Always download the CSV to keep your data permanently.
-
----
-
-## 📎 Type Definitions
+## 🏷️ Type Definitions
 
 | Type | Meaning |
 |---|---|
-| **MH** | Man-Hour (labor-intensive operation) |
-| **P** | Process (standard process step) |
-| **WIP** | Work In Progress (ongoing operation) |
+| `MH` | Material Handling — moving, storing, or handling material (e.g. Unloading, Storaging, Feeding, Loading) |
+| `P` | Production/Process — a value-adding manufacturing step (e.g. Molding, Stamping, Welding, Painting, Inspection, Packaging) |
+| `WIP` | Work In Process — intermediate handling of parts mid-process (e.g. Remove, Conveyor) |
 
 ---
 
 ## ❓ FAQ
 
-**Q. The app closed while I was entering data.**  
-A. Reopen the app and enter the same Supplier/Evaluator in Step 1. Your previous session will appear in the backup list.
+**Q: What happens if I lose internet connection while entering data?**
+A: Nothing is lost. The app keeps saving to the local backup as usual and shows a "📴 No internet connection" notice; once you're back online, it resumes syncing to Google Sheets automatically.
 
-**Q. Some rows were not imported after Excel upload.**  
-A. Check that Type values are MH/P/WIP and Score values are integers between 1 and 5. Invalid rows are skipped automatically.
+**Q: Do I need Google Sheets configured to use the app?**
+A: No. Cloud backup is optional — without it configured, the app runs fully on local backups only.
 
-**Q. I want to evaluate the same supplier again.**  
-A. Download the CSV first, then click **Clear All Data** to reset and start a new session.
+**Q: I downloaded the CSV — is the system backup gone now?**
+A: Only if you left the **"Delete system backup file after download"** checkbox checked (it's checked by default). Either way, the CSV file you downloaded is the permanent record going forward.
 
-**Q. The table formatting breaks when I paste it into email.**  
-A. Use the Outlook desktop app (not the web version) to preserve the HTML table format.
+**Q: Can I edit a process after saving it?**
+A: Yes — navigate to it and edit the fields, then click **Update Process**. Use **🗑️ Delete** to remove it instead.
 
 ---
 
-## 🔒 Security
+## 🔒 Security Notes
 
-- No sensitive credentials are stored within the app
-- It is recommended to delete server backups after downloading the CSV
-- Google Sheets backups are saved only to a dedicated service account sheet
+- The site never shows any credentials or configuration details in the UI — you only ever see your own evaluation data.
+- Backups (local + cloud) are temporary working copies for resuming a session, not a permanent archive — see the table above. Download the CSV whenever you want a permanent, personal copy of your results.
+- The CSV file is generated on the spot when you click download and isn't stored anywhere else by the app — it only exists in your own download.
 
 ---
 
 ## 📄 License
 
-MIT License
+MIT License.
