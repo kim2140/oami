@@ -1,8 +1,50 @@
 # =============================================================================
 # Supplier OAMI Evaluation App
-# Version: 2.24.0
+# Version: 2.26.0
 #
 # [버전 히스토리 - 최신순]
+#   v2.26.0 - "Preset에 있는 Description 글을 넣을 때는 뭔가 저장이 안 되는
+#             것 같다"는 피드백에 따라 draft 자동 저장의 사각지대를 수정.
+#             원인: v2.24.0~v2.25.0의 draft 자동 저장은 Description 등 입력
+#             칸 자체의 on_change에 걸려 있었는데, on_change는 사용자가 그
+#             위젯을 "직접" 조작했을 때만 호출된다. Description Preset(pills)
+#             을 탭하면 apply_description_preset()이 p_desc_input/
+#             p_type_input 값을 코드에서 프로그램적으로 바꾸는 것이라
+#             Description 입력칸을 직접 건드리는 게 아니었고, 그래서 그
+#             위젯의 on_change(=draft 저장)가 전혀 호출되지 않았음(Clear
+#             Description 버튼도 같은 구조라 마찬가지 문제가 있었음). 즉
+#             "직접 타이핑"으로 채운 내용은 draft에 잘 반영됐지만, "프리셋
+#             탭"이나 "Clear 버튼"으로만 바뀐 내용은 draft에 반영되지 않는
+#             사각지대가 있었음.
+#             수정: apply_description_preset()과 clear_description_field()
+#             끝에 save_draft_local_only() 호출을 추가해서, 프리셋을 탭하거나
+#             Clear를 누른 그 즉시 스스로 draft를 저장하도록 함. 이제
+#             Description을 직접 타이핑하든, 프리셋을 탭해서 채우든, Clear로
+#             비우든 모든 경우에 draft가 최신 상태로 남는다.
+#   v2.25.0 - "인터넷이 안 되거나 중간에 정지가 잠깐 되면 문제가 생기지
+#             않을까?"라는 질문에 대응. v2.24.0에서 Process Name/Description/
+#             Type/Score/Remark 다섯 칸에 걸어둔 draft 자동 저장이 매번
+#             save_temp_backup()(로컬 저장 + 클라우드 저장 시도)을 그대로
+#             호출하고 있었는데, 오프라인이거나 네트워크가 불안정하면 칸을
+#             옮길 때마다 has_internet() 사전 확인(캐시 만료 시 최대 2.5초)
+#             이나 API 호출 자체(최대 8초)만큼 짧게 멈춰 보일 수 있어서,
+#             필드가 5개나 되는 만큼 이 지연이 이전(제출 버튼 딱 한 번)보다
+#             훨씬 자주 체감될 수 있다는 지적이 타당했음. 이를 해결하기 위해
+#             draft 자동 저장 전용으로 save_draft_local_only()라는 새 함수를
+#             만들어, 로컬 파일 저장만 즉시 하고 클라우드 저장은 아예 시도
+#             하지 않도록 분리함(로컬 저장은 네트워크를 타지 않으므로 인터넷
+#             상태와 무관하게 항상 빠름). 클라우드 반영은 이미 있던
+#             sync_local_to_cloud_if_needed()(평가 중일 때 매 rerun마다
+#             확인하되 60초 간격으로만 재시도)가 맡아서, 온라인이 되면 늦어도
+#             다음 화면 갱신 시점에 자동으로 클라우드에도 반영됨. 실제
+#             process_list에 저장하는 Save/Update/Delete/Go Evaluation/
+#             Restore 같은 "확정" 동작은 여전히 save_temp_backup()을 그대로
+#             호출해 로컬+클라우드를 즉시 동시에 시도한다(이 동작들은 자주
+#             일어나지 않으므로 지연 우려가 없고, 오히려 즉시 클라우드
+#             반영이 더 중요함). 두 함수가 draft 생성 규칙을 다르게 적용하는
+#             실수를 막기 위해 공통 로직은 _build_backup_payload_with_draft()
+#             로 분리해서 함께 씀. 자세한 내용은 아래 [v2.25.0 변경사항] 및
+#             save_temp_backup()/save_draft_local_only() 함수 주석 참고.
 #   v2.24.0 - "타이핑을 하다가 좀 오랫동안 아무것도 안 하면 다시 처음으로
 #             돌아가는 경우가 있다. Restore로 예전 글을 찾아서 다시 시작할
 #             순 있지만, 그래도 이 문제를 해결해줄 수 있나"는 요청에 대응.
@@ -184,6 +226,67 @@
 # 공급업체 OAMI(Operation Assessment & Management Index) 평가 앱.
 # 프로세스별 Type(MH/P/WIP) 및 PAMI 점수(1~5)를 입력하고
 # Google Sheets(클라우드) + 서버 로컬 파일에 이중 백업.
+#
+# [v2.26.0 변경사항 - 프리셋/Clear로 바뀐 Description도 draft에 반영]
+#   - 사용자 피드백: "Preset에 있는 Description 글을 넣을 때는 뭔가 저장이
+#     안 되는 것 같은데."
+#   - 원인: Streamlit의 on_change 콜백은 "그 위젯을 사용자가 직접 조작"할
+#     때만 호출된다. Description Preset(pills)을 탭하면 실행되는
+#     apply_description_preset()은 Description 입력칸(p_desc_input)의 값을
+#     코드에서 직접 바꾸는 것이지, 그 입력칸을 사용자가 직접 타이핑/블러한
+#     게 아니다. 따라서 v2.24.0~v2.25.0에서 Description 입력칸에 걸어둔
+#     on_change=save_draft_local_only는 프리셋 탭으로 인한 변경에는 전혀
+#     반응하지 않았다. Clear Description 버튼(clear_description_field())도
+#     같은 방식으로 값을 직접 비우기 때문에 동일한 사각지대가 있었다.
+#     결과적으로 "직접 타이핑"만 draft에 반영되고, "프리셋으로만 채운
+#     Description"이나 "Clear로 방금 비운 상태"는 draft에 반영되지 않는
+#     문제가 있었다.
+#   - 수정: apply_description_preset()과 clear_description_field() 각각의
+#     끝부분에 save_draft_local_only()를 명시적으로 호출하도록 추가. 이
+#     두 함수는 이미 Description/Type 값을 다 바꾼 뒤이므로, 그 시점에
+#     draft를 저장하면 프리셋/Clear로 인한 변경도 정확히 반영된다. 결과적
+#     으로 Description을 (1) 직접 타이핑, (2) 프리셋 탭, (3) Clear로 비움
+#     — 이 세 가지 경로 전부 draft 자동 저장을 타게 됐다.
+#   - save_draft_local_only()는 v2.25.0에서 만든 대로 로컬 저장만 하므로,
+#     프리셋 탭이 잦아도(연속으로 여러 개를 탭하는 경우 포함) 네트워크
+#     지연 없이 항상 빠르게 끝난다.
+#
+# [v2.25.0 변경사항 - draft 자동 저장을 "로컬만" 하도록 분리(오프라인 대응)]
+#   - 사용자 질문: "일단 테스트는 다 좋은데 혹시 인터넷이 안되거나 중간에
+#     정지가 잠깐 되면 문제가 생기지 않을까?" — v2.24.0에서 새로 추가한
+#     draft 자동 저장(Process Name/Description/Type/Score/Remark 다섯 칸의
+#     on_change)이 매번 save_temp_backup()을 그대로 호출하고 있었는데, 이
+#     함수는 로컬 저장뿐 아니라 클라우드 저장까지 항상 시도한다.
+#   - 문제점 분석: 클라우드 저장 시도 전에 has_internet()으로 먼저 인터넷
+#     연결을 확인하는데(정상 상태여도 최대 INTERNET_CHECK_TIMEOUT_SEC=2.5초,
+#     10초간 캐시), 그 캐시가 만료된 시점에 오프라인이거나 네트워크가
+#     불안정하면 그때마다 다시 2.5초를 기다려야 한다. 어쩌다 연결은 됐는데
+#     도중에 끊기는 경우엔 API 호출 자체의 최대 대기 시간(NETWORK_TIMEOUT_
+#     SEC=8초)만큼 걸릴 수도 있다. 이 지연 자체는 v2.4.0 때부터 있던
+#     기존 안전장치라 새로운 버그는 아니지만, v2.24.0으로 인해 이 지연이
+#     발생할 수 있는 지점이 "제출 버튼 누를 때 딱 한 번"에서 "다섯 개
+#     입력칸에서 포커스가 벗어날 때마다"로 늘어나서, 오프라인/불안정한
+#     네트워크에서는 체감 빈도가 훨씬 높아질 수 있었다.
+#   - 해결: draft 자동 저장 전용 함수 save_draft_local_only()를 새로 만들어
+#     로컬 파일 저장만 하고 클라우드 저장은 시도하지 않도록 함. 로컬 파일
+#     저장은 네트워크를 전혀 타지 않는 순수 디스크 쓰기라 인터넷 상태와
+#     무관하게 항상 즉시 끝난다. draft는 세션이 갑자기 끊겼을 때를 대비한
+#     임시 보호장치일 뿐 최종 제출이 아니므로, 클라우드 반영이 즉시일
+#     필요는 없다고 판단 — 클라우드 반영은 이미 있던
+#     sync_local_to_cloud_if_needed()(평가 중일 때 매 rerun마다 확인하되
+#     SYNC_RECHECK_INTERVAL_SEC=60초 간격으로만 재시도)가 맡는다. 즉,
+#     인터넷이 끊긴 동안 타이핑해도 화면이 멈추지 않고, 온라인으로 돌아오면
+#     늦어도 다음 화면 갱신 시점에 draft까지 포함해 자동으로 클라우드에
+#     반영된다.
+#   - 실제 process_list에 반영되는 "확정" 동작(Save New Process/Update
+#     Process/Delete/Go Evaluation/Restore Selected Session)은 그대로
+#     save_temp_backup()을 호출해 로컬+클라우드를 즉시 동시에 시도한다.
+#     이 동작들은 다섯 입력칸처럼 자주 일어나지 않고, 오히려 즉시 클라우드
+#     반영이 더 중요한 시점이라 기존 방식을 유지하는 게 맞다고 판단.
+#   - 두 함수(save_temp_backup, save_draft_local_only)가 "언제 draft를
+#     남길지" 규칙을 서로 다르게 구현해버리는 실수를 막기 위해, 공통 로직을
+#     _build_backup_payload_with_draft()라는 헬퍼로 분리해서 두 함수가 함께
+#     사용하도록 리팩터링함.
 #
 # [v2.24.0 변경사항 - 저장 전 타이핑 중이던 새 항목도 draft로 자동 백업]
 #   - 사용자 피드백: "타이핑을 하다가 좀 오랫동안 아무것도 안 하면 다시
@@ -1144,31 +1247,16 @@ def ts_diff_seconds(local_ts_str, cloud_ts_str):
 # - 로컬은 인터넷 유무와 관계없이 항상 저장 (오프라인 대비)
 # - 클라우드는 가능할 때만 저장 (실패해도 로컬이 유지됨)
 # =====================================================================
-def save_temp_backup():
-    """항상 로컬 저장 + 클라우드 저장 시도. stop_backup 시 동작 안 함.
-
-    [v2.24.0] "타이핑을 하다가 한참 아무것도 안 하면 처음으로 돌아가는 경우가
-    있다"는 피드백에 따라, 아직 Save 버튼을 누르지 않은 새 항목 입력 내용
-    (Process Name/Description/Type/Score/Remark)도 "draft"로 함께 백업한다.
-    이유: 이 문제의 실제 원인은 Streamlit의 세션 상태가 브라우저-서버 연결에
-    묶여 있어서, (모바일에서 화면을 오래 꺼두거나 다른 앱으로 오래 전환하는
-    등으로) 그 연결이 끊기면 서버가 기존 세션을 비우고 완전히 새 세션으로
-    시작해버리는 데 있다 — 이건 앱 코드로 "연결 끊김 자체"를 막을 수 있는
-    부분이 아니다. 대신, 지금까지는 process_list에 실제로 "저장(Save New
-    Process)"된 항목만 백업되고 있어서, 저장 전 타이핑 중이던 내용은 세션이
-    끊기면 통째로 사라지는 문제가 있었다. 이제 Process Name/Description/
-    Type/Score/Remark 입력칸에 각각 on_change=save_temp_backup을 걸어(모두
-    st.form 밖의 일반 위젯이라 값이 바뀔 때마다 즉시 호출됨), 입력칸에서
-    포커스가 벗어날 때마다(블러 시) 자동으로 draft가 백업되게 했다. 세션이
-    끊겨도 "Restore Selected Session"으로 복구하면, 이전에 저장해둔 항목들
-    뿐 아니라 마지막으로 타이핑하던 draft까지 함께 돌아온다(복원 로직은 아래
-    "Restore Selected Session" 버튼 콜백 참고)."""
-    if st.session_state.get("stop_backup", False):
-        return
+def _build_backup_payload_with_draft():
+    """[v2.25.0] save_temp_backup()과 save_draft_local_only()가 공통으로 쓰는
+    백업 데이터 생성 로직을 하나로 모음(같은 draft 규칙을 두 곳에 따로
+    적어두면 나중에 한쪽만 고치는 실수가 생기기 쉬워서 함수로 분리).
+    (supplier, evaluator, fname, backup_data) 튜플을 반환하고, supplier/
+    evaluator가 비어있으면 (None, None, None, None)을 반환한다."""
     supplier  = st.session_state.master_info.get("supplier", "")
     evaluator = st.session_state.master_info.get("evaluator", "")
     if not supplier or not evaluator:
-        return
+        return None, None, None, None
 
     # [v2.24.0] 새 항목을 입력하는 중(is_inserting=True)일 때만 draft를
     # 남긴다. 기존 항목을 수정하는 중(is_inserting=False)일 때는 원본
@@ -1194,6 +1282,36 @@ def save_temp_backup():
         "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
     fname = get_backup_filename(supplier, evaluator)
+    return supplier, evaluator, fname, backup_data
+
+
+def save_temp_backup():
+    """항상 로컬 저장 + 클라우드 저장 시도. stop_backup 시 동작 안 함.
+
+    [v2.24.0] "타이핑을 하다가 한참 아무것도 안 하면 처음으로 돌아가는 경우가
+    있다"는 피드백에 따라, 아직 Save 버튼을 누르지 않은 새 항목 입력 내용
+    (Process Name/Description/Type/Score/Remark)도 "draft"로 함께 백업한다.
+    이유: 이 문제의 실제 원인은 Streamlit의 세션 상태가 브라우저-서버 연결에
+    묶여 있어서, (모바일에서 화면을 오래 꺼두거나 다른 앱으로 오래 전환하는
+    등으로) 그 연결이 끊기면 서버가 기존 세션을 비우고 완전히 새 세션으로
+    시작해버리는 데 있다 — 이건 앱 코드로 "연결 끊김 자체"를 막을 수 있는
+    부분이 아니다. 대신, 지금까지는 process_list에 실제로 "저장(Save New
+    Process)"된 항목만 백업되고 있어서, 저장 전 타이핑 중이던 내용은 세션이
+    끊기면 통째로 사라지는 문제가 있었다. 세션이 끊겨도 "Restore Selected
+    Session"으로 복구하면, 이전에 저장해둔 항목들 뿐 아니라 마지막으로
+    타이핑하던 draft까지 함께 돌아온다(복원 로직은 아래 "Restore Selected
+    Session" 버튼 콜백 참고).
+
+    [v2.25.0] 이 함수는 실제 저장(Save New Process/Update Process/Delete
+    /Go Evaluation/Restore)처럼 "확실히 클라우드까지 바로 반영하고 싶은"
+    시점에만 호출한다. Description 등 입력칸에서 타이핑할 때마다 걸리는
+    draft 자동 저장은 아래 save_draft_local_only()로 옮겼다 — 이유는 그
+    함수 주석 참고."""
+    if st.session_state.get("stop_backup", False):
+        return
+    supplier, evaluator, fname, backup_data = _build_backup_payload_with_draft()
+    if supplier is None:
+        return
 
     # ① 로컬 파일 저장 — 인터넷 없어도 항상 실행
     try:
@@ -1204,6 +1322,43 @@ def save_temp_backup():
 
     # ② 클라우드 저장 — 실패해도 로컬이 유지되므로 문제없음
     upload_or_update_gsheet(fname, backup_data)
+
+
+def save_draft_local_only():
+    """[v2.25.0] Process Name/Description/Type/Score/Remark의 on_change로
+    걸리는 draft 자동 저장 전용 함수. save_temp_backup()과 달리 클라우드
+    저장은 시도하지 않고 로컬 파일 저장만 한다.
+
+    이유: "인터넷이 안 되거나 중간에 잠깐 끊기면 문제가 생기지 않을까?"라는
+    질문에 대한 대응. v2.24.0에서는 이 다섯 칸 모두에 save_temp_backup()을
+    직접 걸었는데, 그 함수는 매번 클라우드 저장까지 시도한다. 오프라인이거나
+    네트워크가 불안정할 때는 그때마다 has_internet()의 사전 연결 확인(캐시가
+    만료된 경우 최대 INTERNET_CHECK_TIMEOUT_SEC초)이나, 어쩌다 연결은 됐는데
+    도중에 끊기는 경우의 API 호출 자체(최대 NETWORK_TIMEOUT_SEC초)만큼 그
+    칸을 벗어나는 순간 화면이 잠깐씩 멎어 보일 수 있다 — 필드가 5개나 되니
+    체감상 예전(제출 버튼 누를 때 딱 한 번)보다 훨씬 자주 이런 지연이 생길
+    수 있다는 우려가 타당했다.
+    draft는 세션이 끊겼을 때를 대비한 임시 보호장치일 뿐 최종 제출이
+    아니므로, 굳이 매번 클라우드까지 확인할 필요가 없다. 그래서 이 함수는
+    로컬 파일 저장만 즉시 하고 끝낸다 — 로컬 저장은 네트워크를 전혀 타지
+    않으므로 인터넷 상태와 무관하게 항상 빠르게 끝난다. 클라우드 반영은 이미
+    있던 sync_local_to_cloud_if_needed()(평가 중일 때 매 rerun마다 확인하되
+    SYNC_RECHECK_INTERVAL_SEC=60초 간격으로만 재시도)가 맡아서, 온라인
+    상태가 되면 늦어도 다음 화면 갱신 시점에 자동으로 클라우드에도 반영된다.
+    (기기가 완전히 꺼지는 등 로컬 저장 자체가 안 되는 경우는 애초에 이
+    함수가 아니라 기기 문제이므로 이 함수의 책임 범위 밖이다.)"""
+    if st.session_state.get("stop_backup", False):
+        return
+    supplier, evaluator, fname, backup_data = _build_backup_payload_with_draft()
+    if supplier is None:
+        return
+
+    # 로컬 파일 저장만 — 클라우드 시도는 하지 않음(위 설명 참고)
+    try:
+        with open(fname, "w", encoding="utf-8") as f:
+            json.dump(backup_data, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        logger.error(f"로컬 draft 백업 저장 실패: {e}")
 
 
 # =====================================================================
@@ -1551,7 +1706,19 @@ def apply_description_preset():
       rerun에서 위젯이 다시 그려지기 전에 실행되기 때문).
     [v2.20.0] "Clear를 프리셋 안에 넣지 말고 Description 옆에 별도 버튼으로
     만들어달라"는 요청에 따라, 전체 지우기 기능은 이 함수에서 분리해
-    clear_description_field()로 옮김 — 이 함수는 이제 "프리셋 추가"만 담당."""
+    clear_description_field()로 옮김 — 이 함수는 이제 "프리셋 추가"만 담당.
+
+    [v2.26.0] "Preset으로 Description 글을 넣을 때는 저장이 안 되는 것 같다"
+    는 피드백에 따라 함수 끝에 save_draft_local_only() 호출을 추가했다.
+    원인: v2.24.0~v2.25.0에서 draft 자동 저장은 Description 입력칸 자체의
+    on_change에 걸려 있었는데, on_change는 "사용자가 그 위젯을 직접
+    조작했을 때"만 호출된다. 프리셋(pills)을 탭하면 이 함수가 p_desc_input/
+    p_type_input 값을 프로그램적으로 바꾸는 것이지, Description 입력칸을
+    직접 조작하는 게 아니라서 그 위젯의 on_change는 호출되지 않았다 — 그래서
+    프리셋으로만 채운 내용은 draft에 반영되지 않는 사각지대가 있었다. 이제
+    프리셋을 탭해 내용을 바꾼 바로 그 시점에 이 함수 스스로 draft를
+    저장하도록 해서, Description 입력칸을 직접 타이핑하든 프리셋을 탭하든
+    항상 draft가 최신 상태로 남게 했다."""
     selected = st.session_state.get("desc_preset_select")
     if selected:
         # [v2.19.0] 기존 내용 뒤에 이어붙이기. 끝에 남아있을 수 있는 콤마/
@@ -1568,6 +1735,8 @@ def apply_description_preset():
         # [v2.19.0] 버튼을 누른 채로("선택된 상태로") 남지 않도록 매번 중립
         # 상태(None)로 되돌림 — toggle처럼 보이지 않게 하기 위함
         st.session_state.desc_preset_select = None
+        # [v2.26.0] 프리셋으로 바뀐 내용을 즉시 draft로 저장(위 설명 참고)
+        save_draft_local_only()
 
 
 def clear_description_field():
@@ -1575,8 +1744,15 @@ def clear_description_field():
     만들어달라"는 요청에 따라 apply_description_preset()에서 분리한 전체
     지우기 동작. Description 칸만 비우고 Process Name/Type/Score/Remark는
     건드리지 않는다(지우고 싶은 건 문구지 이미 골라둔 다른 값들이 아닐 수
-    있으므로)."""
+    있으므로).
+
+    [v2.26.0] apply_description_preset()과 같은 이유로, Clear 버튼도
+    Description 입력칸의 on_change를 거치지 않고 값을 직접 비우기 때문에
+    draft가 갱신되지 않는 사각지대가 있었다. Clear를 누른 직후에도 draft가
+    "비어있는 최신 상태"로 남도록 save_draft_local_only()를 호출한다."""
     st.session_state.p_desc_input = ""
+    # [v2.26.0] Description을 비운 상태도 즉시 draft로 반영(위 설명 참고)
+    save_draft_local_only()
 
 
 def process_form_submit():
@@ -1954,13 +2130,20 @@ if st.session_state.is_evaluating:
     # Preset pills는 사용자 확정에 따라 이 박스 밖(위)에 그대로 둔다.
     # =====================================================================
     with st.container(border=True):
-        # [v2.24.0] Process Name/Description/Type/Score/Remark 다섯 칸 모두
-        # on_change=save_temp_backup을 걸어, 이 칸에서 포커스가 벗어날
-        # 때마다(라디오는 선택 즉시) 지금까지 입력한 내용을 draft로 자동
-        # 백업한다. 세션이 중간에 끊겨도 Restore로 복구하면 이 draft까지
-        # 함께 돌아온다. 자세한 이유는 save_temp_backup() 함수 주석과 파일
-        # 상단 [v2.24.0 변경사항] 참고.
-        st.text_input("Process Name (Optional)", key="p_name_input", on_change=save_temp_backup)
+        # [v2.24.0] Process Name/Description/Type/Score/Remark 다섯 칸 모두에
+        # on_change를 걸어, 이 칸에서 포커스가 벗어날 때마다(라디오는 선택
+        # 즉시) 지금까지 입력한 내용을 draft로 자동 백업한다. 세션이 중간에
+        # 끊겨도 Restore로 복구하면 이 draft까지 함께 돌아온다.
+        # [v2.25.0] "인터넷이 안 되거나 중간에 잠깐 끊기면 문제가 생기지
+        # 않을까?"라는 질문에 따라, on_change 대상을 save_temp_backup(로컬+
+        # 클라우드 동시 시도)에서 save_draft_local_only(로컬만 즉시 저장)로
+        # 변경. 다섯 칸 모두에서 매번 클라우드까지 확인하면 오프라인/불안정한
+        # 네트워크에서 칸을 옮길 때마다 짧게 멈춰 보일 수 있어서, draft
+        # 저장은 네트워크와 무관하게 항상 즉시 끝나도록 하고 클라우드 반영은
+        # 기존 sync_local_to_cloud_if_needed()에 맡겼다. 자세한 이유는
+        # save_draft_local_only() 함수 주석과 파일 상단 [v2.25.0 변경사항]
+        # 참고.
+        st.text_input("Process Name (Optional)", key="p_name_input", on_change=save_draft_local_only)
         # [v2.22.0] "Clear Description 버튼이 너무 커서 실수로 누를 것 같다"는
         # 피드백에 따라, Description 아래에 있던 가로로 긴 버튼(글자+아이콘)을
         # 없애고 휴지통 아이콘만 있는 작은 버튼으로 교체(처음엔 st.columns로
@@ -1977,7 +2160,7 @@ if st.session_state.is_evaluating:
         # 해당 블록에 "st-key-<key>" CSS 클래스를 자동으로 붙여주는 점을
         # 이용함(별도 컬럼 분할이 없으므로 좁은 화면에서도 줄바꿈으로 인한
         # 위치 흔들림이 없다).
-        st.text_input("Description - Required*", placeholder="Enter details, or pick a preset above...", key="p_desc_input", on_change=save_temp_backup)
+        st.text_input("Description - Required*", placeholder="Enter details, or pick a preset above...", key="p_desc_input", on_change=save_draft_local_only)
         with st.container(key="clear_desc_row"):
             st.button("🗑️", key="clear_desc_icon_btn", on_click=clear_description_field,
                       help=f"{DESCRIPTION_PRESET_CLEAR_LABEL} (Process Name/Type/Score/Remark are not affected).")
@@ -1988,11 +2171,11 @@ if st.session_state.is_evaluating:
 
         st.write("Type - Required*")
         st.radio("Type", options=["MH", "P", "WIP"], index=None, horizontal=True,
-                 label_visibility="collapsed", key="p_type_input", on_change=save_temp_backup)
+                 label_visibility="collapsed", key="p_type_input", on_change=save_draft_local_only)
         st.write("Score (1~5) - Required*")
         st.radio("Score", options=[1, 2, 3, 4, 5], index=None, horizontal=True,
-                 label_visibility="collapsed", key="p_score_input", on_change=save_temp_backup)
-        st.text_input("Remark (Optional)", key="p_remark_input", on_change=save_temp_backup)
+                 label_visibility="collapsed", key="p_score_input", on_change=save_draft_local_only)
+        st.text_input("Remark (Optional)", key="p_remark_input", on_change=save_draft_local_only)
         btn_text = "Save New Process" if st.session_state.is_inserting else "Update Process"
         st.button(btn_text, on_click=process_form_submit)
 
