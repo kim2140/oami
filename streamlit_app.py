@@ -1,8 +1,28 @@
 # =============================================================================
 # Supplier OAMI Evaluation App
-# Version: 2.23.0
+# Version: 2.24.0
 #
 # [버전 히스토리 - 최신순]
+#   v2.24.0 - "타이핑을 하다가 좀 오랫동안 아무것도 안 하면 다시 처음으로
+#             돌아가는 경우가 있다. Restore로 예전 글을 찾아서 다시 시작할
+#             순 있지만, 그래도 이 문제를 해결해줄 수 있나"는 요청에 대응.
+#             근본 원인은 Streamlit의 세션이 브라우저-서버 연결에 묶여 있어서,
+#             (화면을 오래 꺼두거나 다른 앱으로 오래 전환하는 등으로) 연결이
+#             끊기면 서버가 그 세션을 비우고 완전히 새 세션으로 다시 시작하는
+#             데 있음 — 이건 앱 코드로 "연결 끊김 자체"를 막을 수 있는 부분이
+#             아니라서 완전히 없앨 수는 없음을 사용자에게 설명함. 대신 실제
+#             데이터 손실을 줄이는 방향으로 개선: 지금까지는 "Save New
+#             Process"를 눌러야만 process_list에 들어가 백업됐고, 그 전에
+#             타이핑만 하고 있던 새 항목 내용은 세션이 끊기면 통째로
+#             사라졌음. 이제 Process Name/Description/Type/Score/Remark 다섯
+#             칸에 on_change=save_temp_backup을 걸어, 칸에서 포커스가 벗어날
+#             때마다(라디오는 선택 즉시) 지금까지 입력한 내용을 "draft"로
+#             함께 자동 백업함. 세션이 끊겨도 "Restore Selected Session"으로
+#             복구하면 이전에 저장해둔 항목들뿐 아니라 마지막으로 타이핑하던
+#             draft까지 함께 돌아와서, 처음부터 다시 타이핑할 필요가 없어짐.
+#             (기존 항목을 수정하던 중이었다면 원본은 이미 안전하게 저장되어
+#             있으므로 draft 대상에서는 제외 — 자세한 내용은 save_temp_backup()
+#             함수 주석과 아래 [v2.24.0 변경사항] 참고.)
 #   v2.23.0 - "모바일로 보니까 무조건 한 줄 내려가는 거 같아. 그럼 그냥 한 줄
 #             내리고 오른쪽으로 보내줘"라는 피드백에 따라 Clear Description
 #             아이콘 버튼 배치 방식 변경. v2.22.0의 st.columns([6,1]) 방식은
@@ -164,6 +184,42 @@
 # 공급업체 OAMI(Operation Assessment & Management Index) 평가 앱.
 # 프로세스별 Type(MH/P/WIP) 및 PAMI 점수(1~5)를 입력하고
 # Google Sheets(클라우드) + 서버 로컬 파일에 이중 백업.
+#
+# [v2.24.0 변경사항 - 저장 전 타이핑 중이던 새 항목도 draft로 자동 백업]
+#   - 사용자 피드백: "타이핑을 하다가 좀 오랫동안 아무것도 안 하면 다시
+#     처음으로 돌아가는 경우가 있다. 물론 restore에서 과거 내가 쓴 글을
+#     찾아서 다시 시작하면 되긴 하는데, 그래도 이 문제를 해결해줄 수 있나."
+#   - 원인 분석: Streamlit은 브라우저 탭과 서버 사이의 연결(WebSocket)에
+#     세션 상태를 묶어서 관리한다. 모바일에서 화면을 꺼두거나 다른 앱으로
+#     오래 전환해서 이 연결이 끊기면, 서버는 기존 세션을 정리하고 다음 접속
+#     때 완전히 새 세션(빈 master_info, 빈 process_list, is_evaluating=False)
+#     으로 시작한다 — 사용자 입장에서는 "Step 1 화면으로 되돌아간" 것처럼
+#     보인다. 이 연결 끊김 자체(모바일 OS의 백그라운드 탭 정지, 네트워크
+#     불안정 등)는 앱 코드 레벨에서 완전히 막을 수 있는 부분이 아니다.
+#   - 대신 초점을 "연결이 끊겨도 잃어버리는 내용을 최소화하는 것"으로 잡음.
+#     기존에는 process_list에 실제로 "Save New Process"로 저장된 항목만
+#     로컬+클라우드에 백업되고 있어서, 저장 버튼을 누르기 전 타이핑만 하고
+#     있던 새 항목의 Process Name/Description/Type/Score/Remark는 세션이
+#     끊기는 순간 그대로 사라졌다(Restore를 해도 "이전에 저장된 항목들"까지만
+#     돌아오고, 지금 막 쓰던 내용은 못 돌아옴).
+#   - 구현:
+#     1) save_temp_backup()이 is_inserting=True(새 항목 입력 중)일 때는
+#        현재 입력칸 다섯 개의 값을 "draft" 딕셔너리로 만들어 backup_data에
+#        함께 저장하도록 확장(다섯 칸이 전부 비어있으면 draft는 저장 안 함).
+#     2) Process Name/Description/Type/Score/Remark 위젯 다섯 개 모두에
+#        on_change=save_temp_backup을 추가. 전부 st.form 밖의 일반 위젯이라
+#        (v2.19.0~v2.21.0에서 이미 폼 밖으로 옮겨둔 상태) 텍스트 입력은
+#        블러 시, 라디오는 선택 즉시 콜백이 호출되어 즉시 draft가 백업된다.
+#     3) "Restore Selected Session" 버튼 콜백에서, 기존처럼 info/list를
+#        복원하고 sync_form_with_state()를 호출한 "다음"에 draft가 있으면
+#        그 값을 다섯 입력칸에 덮어씀(순서가 바뀌면 sync_form_with_state()가
+#        새 항목용 빈 값으로 되돌려서 draft가 지워지므로 순서가 중요함).
+#   - 기존 항목을 수정하던 중(is_inserting=False)이었다면 draft를 남기지
+#     않는다 — 그 항목의 원본 데이터는 이미 process_list에 안전하게 저장되어
+#     있고, 수정 중이던 위치(인덱스)가 세션 재시작 후 다른 항목과 어긋날
+#     위험을 피하기 위함. 이 경우는 "저장된 원본을 잃는" 문제가 아니라
+#     "마지막 수정 몇 글자를 다시 입력해야 할 수도 있는" 더 작은 문제로
+#     남는다.
 #
 # [v2.23.0 변경사항 - Clear Description 버튼을 화면 크기 무관하게 오른쪽 정렬]
 #   - v2.22.0에서 st.columns([6,1])로 Description 오른쪽에 버튼을 배치했으나,
@@ -1089,7 +1145,24 @@ def ts_diff_seconds(local_ts_str, cloud_ts_str):
 # - 클라우드는 가능할 때만 저장 (실패해도 로컬이 유지됨)
 # =====================================================================
 def save_temp_backup():
-    """항상 로컬 저장 + 클라우드 저장 시도. stop_backup 시 동작 안 함."""
+    """항상 로컬 저장 + 클라우드 저장 시도. stop_backup 시 동작 안 함.
+
+    [v2.24.0] "타이핑을 하다가 한참 아무것도 안 하면 처음으로 돌아가는 경우가
+    있다"는 피드백에 따라, 아직 Save 버튼을 누르지 않은 새 항목 입력 내용
+    (Process Name/Description/Type/Score/Remark)도 "draft"로 함께 백업한다.
+    이유: 이 문제의 실제 원인은 Streamlit의 세션 상태가 브라우저-서버 연결에
+    묶여 있어서, (모바일에서 화면을 오래 꺼두거나 다른 앱으로 오래 전환하는
+    등으로) 그 연결이 끊기면 서버가 기존 세션을 비우고 완전히 새 세션으로
+    시작해버리는 데 있다 — 이건 앱 코드로 "연결 끊김 자체"를 막을 수 있는
+    부분이 아니다. 대신, 지금까지는 process_list에 실제로 "저장(Save New
+    Process)"된 항목만 백업되고 있어서, 저장 전 타이핑 중이던 내용은 세션이
+    끊기면 통째로 사라지는 문제가 있었다. 이제 Process Name/Description/
+    Type/Score/Remark 입력칸에 각각 on_change=save_temp_backup을 걸어(모두
+    st.form 밖의 일반 위젯이라 값이 바뀔 때마다 즉시 호출됨), 입력칸에서
+    포커스가 벗어날 때마다(블러 시) 자동으로 draft가 백업되게 했다. 세션이
+    끊겨도 "Restore Selected Session"으로 복구하면, 이전에 저장해둔 항목들
+    뿐 아니라 마지막으로 타이핑하던 draft까지 함께 돌아온다(복원 로직은 아래
+    "Restore Selected Session" 버튼 콜백 참고)."""
     if st.session_state.get("stop_backup", False):
         return
     supplier  = st.session_state.master_info.get("supplier", "")
@@ -1097,9 +1170,27 @@ def save_temp_backup():
     if not supplier or not evaluator:
         return
 
+    # [v2.24.0] 새 항목을 입력하는 중(is_inserting=True)일 때만 draft를
+    # 남긴다. 기존 항목을 수정하는 중(is_inserting=False)일 때는 원본
+    # 데이터가 이미 process_list에 안전하게 들어있고, 수정 중인 위치(인덱스)가
+    # 세션 재시작 후 어긋날 수 있어 draft 복원 대상에서는 제외한다.
+    draft = None
+    if st.session_state.get("is_inserting", False):
+        draft = {
+            "name":   st.session_state.get("p_name_input", "") or "",
+            "desc":   st.session_state.get("p_desc_input", "") or "",
+            "type":   st.session_state.get("p_type_input"),
+            "score":  st.session_state.get("p_score_input"),
+            "remark": st.session_state.get("p_remark_input", "") or "",
+        }
+        # 다섯 칸이 전부 비어있으면 저장할 draft가 없는 것과 같음
+        if not any(draft.values()):
+            draft = None
+
     backup_data = {
         "info":         st.session_state.master_info,
         "list":         st.session_state.process_list,
+        "draft":        draft,  # [v2.24.0] 저장 전 타이핑 중이던 새 항목 내용
         "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
     fname = get_backup_filename(supplier, evaluator)
@@ -1593,14 +1684,26 @@ with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=not st.sessi
             )
             if selected_backup != "-- Select a backup --":
                 if st.button("Restore Selected Session"):
-                    st.session_state.master_info  = backup_options[selected_backup]['info']
-                    st.session_state.process_list = backup_options[selected_backup]['list']
+                    restored_data = backup_options[selected_backup]
+                    st.session_state.master_info  = restored_data['info']
+                    st.session_state.process_list = restored_data['list']
                     st.session_state.is_evaluating         = True
                     st.session_state.stop_backup           = False
                     st.session_state.download_action_status = None
                     st.session_state.nav_index    = len(st.session_state.process_list) - 1
                     st.session_state.is_inserting = True
                     sync_form_with_state()
+                    # [v2.24.0] Save 버튼을 누르기 전에 타이핑 중이던 draft가
+                    # 함께 백업되어 있으면 복원. sync_form_with_state()가 새
+                    # 항목 입력칸을 빈 값으로 초기화한 "다음"에 덮어써야
+                    # draft 내용이 지워지지 않는다.
+                    draft = restored_data.get('draft')
+                    if draft:
+                        st.session_state.p_name_input   = draft.get("name", "") or ""
+                        st.session_state.p_desc_input   = draft.get("desc", "") or ""
+                        st.session_state.p_type_input   = draft.get("type")
+                        st.session_state.p_score_input  = draft.get("score")
+                        st.session_state.p_remark_input = draft.get("remark", "") or ""
                     st.rerun()
             st.write("---")
 
@@ -1851,7 +1954,13 @@ if st.session_state.is_evaluating:
     # Preset pills는 사용자 확정에 따라 이 박스 밖(위)에 그대로 둔다.
     # =====================================================================
     with st.container(border=True):
-        st.text_input("Process Name (Optional)", key="p_name_input")
+        # [v2.24.0] Process Name/Description/Type/Score/Remark 다섯 칸 모두
+        # on_change=save_temp_backup을 걸어, 이 칸에서 포커스가 벗어날
+        # 때마다(라디오는 선택 즉시) 지금까지 입력한 내용을 draft로 자동
+        # 백업한다. 세션이 중간에 끊겨도 Restore로 복구하면 이 draft까지
+        # 함께 돌아온다. 자세한 이유는 save_temp_backup() 함수 주석과 파일
+        # 상단 [v2.24.0 변경사항] 참고.
+        st.text_input("Process Name (Optional)", key="p_name_input", on_change=save_temp_backup)
         # [v2.22.0] "Clear Description 버튼이 너무 커서 실수로 누를 것 같다"는
         # 피드백에 따라, Description 아래에 있던 가로로 긴 버튼(글자+아이콘)을
         # 없애고 휴지통 아이콘만 있는 작은 버튼으로 교체(처음엔 st.columns로
@@ -1868,7 +1977,7 @@ if st.session_state.is_evaluating:
         # 해당 블록에 "st-key-<key>" CSS 클래스를 자동으로 붙여주는 점을
         # 이용함(별도 컬럼 분할이 없으므로 좁은 화면에서도 줄바꿈으로 인한
         # 위치 흔들림이 없다).
-        st.text_input("Description - Required*", placeholder="Enter details, or pick a preset above...", key="p_desc_input")
+        st.text_input("Description - Required*", placeholder="Enter details, or pick a preset above...", key="p_desc_input", on_change=save_temp_backup)
         with st.container(key="clear_desc_row"):
             st.button("🗑️", key="clear_desc_icon_btn", on_click=clear_description_field,
                       help=f"{DESCRIPTION_PRESET_CLEAR_LABEL} (Process Name/Type/Score/Remark are not affected).")
@@ -1879,11 +1988,11 @@ if st.session_state.is_evaluating:
 
         st.write("Type - Required*")
         st.radio("Type", options=["MH", "P", "WIP"], index=None, horizontal=True,
-                 label_visibility="collapsed", key="p_type_input")
+                 label_visibility="collapsed", key="p_type_input", on_change=save_temp_backup)
         st.write("Score (1~5) - Required*")
         st.radio("Score", options=[1, 2, 3, 4, 5], index=None, horizontal=True,
-                 label_visibility="collapsed", key="p_score_input")
-        st.text_input("Remark (Optional)", key="p_remark_input")
+                 label_visibility="collapsed", key="p_score_input", on_change=save_temp_backup)
+        st.text_input("Remark (Optional)", key="p_remark_input", on_change=save_temp_backup)
         btn_text = "Save New Process" if st.session_state.is_inserting else "Update Process"
         st.button(btn_text, on_click=process_form_submit)
 
