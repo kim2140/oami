@@ -1,137 +1,182 @@
-> 🇺🇸 [View in English](README.md)
+> 🇰🇷 [한국어 README 보기](README_KO.md)
 
-# 📝 Supplier OAMI Evaluation App (공급사 OAMI 평가 앱)
+# 📝 Supplier OAMI Evaluation App
 
-현장 심사자가 공급사의 공정별 **OAMI**(공정 품질) 평가 — 공정별 Type(MH/P/WIP) + PAMI 점수(1~5) + 설명/비고 — 를 기록하기 위한 웹 앱입니다. **로컬 + 클라우드** 이중 백업이 자동으로 이루어져, 기기 문제나 통신 두절이 생겨도 작업 내용이 사라지지 않습니다.
+A web app for auditors to record a supplier's per-process **OAMI** (process-quality) evaluations on-site — Line Type + Type (MH / OP / WIP) + PAMI score (1–5) + description/remark per process — with automatic **local + cloud** dual backup so no work is lost if your device or connection drops.
 
-*(이 문서는 앱 버전 **2.21.0** 기준으로 확인/작성되었습니다.)*
+*(Documentation last verified against app version **2.29.0**.)*
+
+This guide is written for someone opening the app for the very first time — just follow the steps in order.
 
 ---
 
-## 🔗 앱 접속하기
+## 🔗 Open the App
 
-별도 설치 없이 브라우저에서 바로 열면 됩니다.
+No installation needed — just open it in your browser:
 
 **👉 https://oamigmscore.streamlit.app/**
 
-PC와 모바일 브라우저 모두에서 사용할 수 있습니다. 아래 내용은 이 사이트를 연 뒤 사용하는 방법을 설명합니다.
+It works on both PC and mobile browsers. Everything below describes how to use it once it's open.
 
 ---
 
-## ✨ 주요 기능
+## ✨ Features
 
-| 기능 | 설명 |
+| Feature | Description |
 |---|---|
-| 이중 백업 | 변경할 때마다 로컬 백업에 자동 저장되고, 온라인 상태일 때는 클라우드에도 자동으로 백업됩니다. |
-| 오프라인 대응 | 인터넷이 끊겨도 앱은 멈추지 않고 로컬 저장만으로 계속 진행되며, 다시 연결되면 자동으로 클라우드와 동기화됩니다 — 어느 쪽이든 데이터 손실은 없습니다. |
-| 글자 크기 조절 | 화면 상단의 5단계 −/+ 줌 컨트롤로 전체 글자 크기를 키우거나 줄일 수 있고, 선택값은 세션 동안(주소창 URL을 통해) 유지되어 새로고침해도 초기화되지 않습니다. |
-| 탭으로 설명 작성 | 제조 흐름 순서(자재 투입 → 가공 → 조립/용접 → 도장 → 마무리 → 품질 → 포장/출하)로 정리된 26개의 프리셋 버튼을 탭하면 Description 입력칸 뒤에 이어붙여지며, 직접 타이핑한 내용과도 함께 조합할 수 있습니다. |
-| Type 자동 제안 | Description 프리셋을 선택하면 해당 공정에 맞는 Type(MH/P/WIP)도 함께 채워지며, 이후에도 수동으로 자유롭게 바꿀 수 있습니다. |
-| 대량 업로드 | Excel 템플릿을 내려받아 채운 뒤 업로드하면 여러 공정을 한 번에 등록할 수 있습니다. |
-| 이어서 작업 | 보관 기간 내의 로컬 또는 클라우드 백업(둘 중 더 최신 것) 중에서 골라 복구하면, 중단했던 지점부터 그대로 이어서 작업할 수 있습니다. |
-| 모바일/PC 내보내기 | 이메일용으로 텍스트 요약(모바일에 적합) 또는 HTML 표(PC에 적합)를 복사하거나, 클릭 한 번으로 Outlook 초안을 자동 작성할 수 있습니다. |
-| CSV 내보내기 | 언제든 전체 평가 결과를 CSV 파일로 내려받을 수 있습니다. |
+| Dual backup | Every change is saved automatically to a local backup, and mirrored to the cloud in the background whenever you're online. |
+| Offline-safe | If the connection drops, the app keeps working and saving locally; it re-syncs to the cloud automatically once you're back online — no data is lost either way. |
+| Typing-safe drafts | Even before you click "Save New Process," what you're typing is auto-saved as a draft, so if the browser tab resets mid-entry you can pick it back up from "Restore Selected Session" instead of retyping everything. |
+| Adjustable text size | A 5-level −/+ zoom control at the top of the app makes all text bigger or smaller; the setting is remembered for the session (via the page URL) so a refresh doesn't reset it. |
+| Tap-to-build description | 22 preset buttons, grouped by manufacturing flow (material handling → machining → assembly/welding → paint → finishing → quality → packaging/shipping), each tap appends its text to the Description field and can be combined with free typing. |
+| Auto Type suggestion | Selecting a Description preset also fills in the matching Type (MH/OP/WIP) for you — you can still change it manually afterward. |
+| Line Type + Program(s) Supported | Each process records whether it's on a Shared Line or a Dedicated Line; picking Dedicated Line lets you note which program(s) the line supports. Your last choice carries over as the default for the next process, so you don't have to re-pick it every time. |
+| Bulk upload | Register many processes at once via an Excel template (download, fill in, upload). |
+| Resume in progress | Restore a session from its local or cloud backup (whichever is newer) within the retention window, to continue exactly where you left off. |
+| Mobile & PC export | Copy a plain-text summary (mobile-friendly) or an HTML table (PC-friendly) for email, or auto-fill an Outlook draft with one click. |
+| CSV export | Download the full evaluation as a CSV file at any time. |
 
 ---
 
-## 🧭 사용 방법
+## 🧭 How to Use
 
-### Step 0 — 글자 크기 조절 (선택)
+### Step 0 — Adjust Text Size (optional)
 
-앱 최상단의 **🔠 Text Size** 컨트롤(`−` / `A` / `+`)로 5단계 중 원하는 크기를 선택할 수 있습니다. 가운데 "A"는 현재 단계(예: `3/5`)를 실제 크기로 보여주므로 바로 효과를 확인할 수 있으며, 선택한 크기는 세션 내내 유지됩니다.
+At the very top of the app, use the **🔠 Text Size** control (`−` / `A` / `+`) to pick from 5 font sizes. The center "A" shows the current step (e.g. `3/5`) at its actual size, so you can see the effect immediately. Your choice stays applied for the rest of the session.
 
-### Step 1 — 공급사 및 평가자 정보
+### Step 1 — Supplier & Evaluator Info
 
-1. 최근 14일 이내의 백업(로컬 또는 클라우드 중 더 최신인 것)이 있으면 **"Restore Selected Session"**으로 이어서 진행할 수 있는 옵션이 나타납니다.
-2. **Supplier Name**과 **Evaluator Name**을 입력합니다(둘 다 필수).
-3. **Go Evaluation**을 눌러 시작합니다. 둘 중 하나라도 비어 있으면 *"🚨 Please enter both Supplier Name and Evaluator Name."* 메시지가 표시됩니다.
+![Step 1: Supplier & Evaluator Info screen, with the text size control and an optional restore-a-past-session dropdown above the Supplier Name / Evaluator Name fields](screenshots/01_step1_start.png)
 
-평가가 시작되면 클라우드 연결 상태를 알려주는 안내 문구가 표시됩니다.
-- **☁️ Cloud sync: connected** — 로컬과 클라우드 양쪽에 정상적으로 백업되고 있습니다.
-- **📴 No internet connection** — 인터넷이 끊긴 상태이며, 데이터는 로컬에는 계속 저장되고 있고, 다시 연결되면 자동으로 클라우드와 동기화됩니다.
+1. If a backup from the past 14 days exists (locally or in the cloud, whichever is newer), a **"Restore Selected Session"** option appears so you can pick it up where you left off — including anything you were mid-typing when the session was interrupted.
+2. Enter **Supplier Name** and **Evaluator Name** (both required).
 
-### Step 2 — (선택) Excel로 대량 업로드
+   ![Supplier Name and Evaluator Name filled in, ready to click Go Evaluation](screenshots/02_step1_filled.png)
 
-**📂 Bulk Upload via Excel**을 펼쳐서 여러 공정을 한 번에 등록할 수 있습니다.
+3. Click **Go Evaluation** to start. If either field is empty, you'll see: *"🚨 Please enter both Supplier Name and Evaluator Name."*
 
-1. **📥 Download Excel Template**을 클릭합니다 — `Process Name / Description / Type / Score / Remark` 컬럼의 예시 행이 포함되어 있습니다.
-2. 내용을 채운 뒤 **Upload filled Excel template**으로 업로드합니다.
-3. **🚀 Upload & Apply Data**를 클릭합니다. `Description`, `Type`, `Score`는 필수 컬럼이며, Type이나 Score가 유효하지 않은 행은 경고와 함께 건너뛰고 나머지 행은 정상적으로 반영됩니다.
+Once evaluation starts, a status caption tells you whether the cloud connection is active:
+- **☁️ Cloud sync: connected** — your data is backed up locally and to the cloud.
+- **📴 No internet connection** — your data is still being saved locally, and will sync to the cloud automatically once you're back online.
 
-### Step 3 — 공정별 입력
+### Step 2 — (Optional) Bulk Upload via Excel
 
-먼저 **Description Preset** — 입력 박스 위에 있는 26개의 프리셋 버튼 중 하나를 탭하면 아래 Description 입력칸 뒤에 해당 공정명이 이어붙습니다(여러 번 연속으로 탭할 수 있습니다 — 예: *Unloading*을 탭한 뒤 *Storaging*을 탭하면 `"Unloading, Storaging"`이 됩니다). 프리셋을 탭하면 해당 공정에 맞는 **Type**(MH/P/WIP)도 함께 채워지며, *가장 마지막에 탭한* 프리셋 기준으로 갱신됩니다. 이후에도 Type은 수동으로 자유롭게 바꿀 수 있습니다.
+Open **📂 Bulk Upload via Excel** to register several processes at once:
 
-그 다음, 테두리 박스 안에서 아래 항목을 채웁니다.
+![Bulk Upload via Excel expanded, showing the Download Excel Template button and the file upload box](screenshots/03_step2_bulk_upload.png)
 
-1. **Process Name** (선택) — 공정/설비를 나타내는 자유 텍스트 라벨입니다.
-2. **Description** (필수) — 직접 입력하거나 프리셋으로 채워진 내용을 자유롭게 편집할 수 있으며, **🗑️ Clear Description** 버튼으로 이 내용만 지울 수 있습니다(Process Name/Type/Score/Remark는 영향받지 않습니다).
-3. **Type** (필수) — `MH`(자재 취급) / `P`(생산/공정) / `WIP`(공정 중 재공); 마지막으로 탭한 프리셋에 따라 자동으로 채워지지만 자유롭게 변경 가능합니다.
-4. **Score (1~5)** (필수) — 해당 공정의 PAMI 점수입니다.
-5. **Remark** (선택) — 추가로 남길 비고입니다.
-6. **Save New Process**(기존 항목을 수정 중이면 **Update Process**)를 클릭해 저장합니다.
+1. Click **📥 Download Excel Template** — it includes sample rows with the columns `Process Name / Description / Type / Score / Remark`.
+2. Fill it in and upload it with **Upload filled Excel template**.
+3. Click **🚀 Upload & Apply Data**. `Description`, `Type`, and `Score` are required columns (`Type` must be `MH`, `OP`, or `WIP`); rows with an invalid Type or Score are skipped with a warning, and the rest are still applied.
 
-작성 중인 내용을 취소하려면 **🚫 Cancel**을, 저장된 공정을 삭제하려면 **🗑️ Delete**를 사용합니다(삭제 전에 **✔️ Yes, Delete** / **❌ Cancel** 확인 단계가 나타납니다).
+   > Note: bulk-uploaded rows don't include Line Type / Program(s) Supported yet — add those afterward for any row that needs them, the same way as a manually entered process (see Step 3 below).
 
-### Step 4 — 평가 요약 및 내보내기
+### Step 3 — Enter Each Process
 
-공정이 하나 이상 저장되면 다음이 표시됩니다.
+First, **Description Preset** — tap any of the 22 preset buttons (above the input box) to append that step's name to the Description field below (you can tap several in a row — e.g. tap *Unloading* then *Storaging* to get `"Unloading, Storaging"`). Tapping a preset also sets **Type** to match that preset's usual category (MH/OP/WIP); the *last* preset you tap wins, and you can still change Type manually afterward.
 
-- **Total Processes**와 **Total OAMI Average**(5.0 만점) 지표.
-- **📱 1. Mobile (Text)** 탭 — **📋 Copy Text for Outlook**으로 복사할 수 있는 텍스트 요약(수동 붙여넣기도 가능).
-- **🖥️ 2. PC (Table)** 탭 — 이메일에 표 형태로 붙여넣기 위한 **📋 Copy Table for Outlook** 기능이 포함된 HTML 표.
-- **📨 Open Outlook Mail App** — 모바일 텍스트 요약이 본문에 자동으로 채워진 새 메일 초안을 엽니다.
-- **📥 Download CSV Backup** — 전체 평가 결과를 CSV 파일로 내려받습니다. 기본값으로 체크되어 있는 체크박스를 통해 다운로드 후 임시 시스템 백업 파일을 함께 삭제할 수도 있습니다 — **CSV 파일만이 유일한 영구 보관본**이며, 시스템 백업은 임시 저장분으로 언제든 삭제될 수 있습니다.
-- **🚨 Clear All Data (Start New)** — 확인 절차를 거친 뒤 앱을 초기화하여 새로운 평가를 시작합니다. 이때 현재 공급사의 임시 백업도 함께 제거됩니다.
+![Description Preset buttons above an empty input box: Process Name, Line Type, Description, Type, Score, Remark, and Save New Process](screenshots/04_step3_presets.png)
+
+Then, inside the input box, fill in:
+
+1. **Process Name** (optional) — a free-text label for the process/station.
+2. **Line Type** (required) — choose **Shared Line** or **Dedicated Line**.
+
+   ![Shared Line selected, with Description filled in from presets and Type/Score chosen](screenshots/05_step3_shared_line.png)
+
+   If you choose **Dedicated Line**, a **Program(s) Supported** field appears below it so you can note which program(s) the line is dedicated to (optional).
+
+   ![Dedicated Line selected, revealing the Program(s) Supported text field below it](screenshots/06_step3_dedicated_line.png)
+
+   Whatever you pick here (Shared/Dedicated, and the program(s) you typed) is remembered as the default for your *next* new process, so you don't have to re-select it every time you add one — you can still change it whenever it's actually different.
+3. **Description** (required) — free-text; you can type here directly, edit around what the presets inserted, or clear it entirely with the small **🗑️** button next to the field (this only clears Description — Process Name, Line Type, Type, Score, and Remark are untouched).
+4. **Type** (required) — `MH` (Material Handling) / `OP` (Operation/Process) / `WIP` (Work In Process); pre-filled by the last preset tapped, but freely changeable.
+5. **Score (1–5)** (required) — the PAMI score for this process.
+6. **Remark** (optional) — any additional note.
+7. Click **Save New Process** (or **Update Process** if you're editing an existing entry).
+
+Use **🚫 Cancel** to discard an in-progress edit, or **🗑️ Delete** to remove a saved process (a confirmation step — **✔️ Yes, Delete** / **❌ Cancel** — appears before anything is removed).
+
+### Step 4 — Evaluation Summary & Export
+
+Once you have at least one process saved, a **📊 Evaluation Summary** section appears below the input box:
+
+- **Total Processes** and **Total OAMI Average** (out of 5.0) are shown as metrics.
+- **📱 1. Mobile (Text)** tab — a plain-text summary you can copy with **📋 Copy Text for Outlook**, or paste manually.
+
+  ![Mobile tab showing a plain-text summary table, with the Program(s) Supported column showing "Shared" or the program name](screenshots/07_step4_summary_mobile.png)
+
+- **🖥️ 2. PC (Table)** tab — a formatted HTML table you can copy with **📋 Copy Table for Outlook** for pasting into an email as a table. Note that in both export views, Line Type and Program(s) Supported are combined into a single **Program(s) Supported** column — it shows **"Shared"** for a Shared Line, or the program name(s) you entered for a Dedicated Line — so the data pastes cleanly into a single Excel column.
+
+  ![PC tab showing the same data as a formatted HTML table](screenshots/08_step4_summary_pc.png)
+
+- **📨 Open Outlook Mail App** — opens a new mail draft with the mobile text summary pre-filled in the body.
+- **📥 Download CSV Backup** — downloads the full record as a CSV file. A checkbox (checked by default) lets you also delete the temporary system backup file after downloading, since **the CSV file is the only permanent copy** — system backups are temporary and can be cleared at any time.
+- **🚨 Clear All Data (Start New)** — resets the app to start a fresh evaluation (with a confirmation step first). This also removes the current supplier's temporary backup.
+
+  ![CSV download button, delete-backup checkbox, and Clear All Data button](screenshots/09_step4_csv_download.png)
 
 ---
 
-## 💾 백업 및 데이터 정책
+## 💾 Backup & Data Policy
 
-| | 로컬 백업 | Google Sheets 백업 | CSV 다운로드 |
+| | Local backup | Google Sheets backup | CSV download |
 |---|---|---|---|
-| 저장 시점 | 변경할 때마다 자동 | 온라인 상태일 때 자동(최선 노력) | 필요할 때 수동 |
-| 보관 기간 | 임시 — 보관 기간 내 유지, 삭제 가능 | 임시 — 보관 기간 내 유지, 삭제 가능 | **영구** — 장기적으로 신뢰할 수 있는 유일한 보관본 |
-| 인터넷 필요 여부 | 불필요 | 필요 | 불필요 |
+| When it's saved | Automatically, after every change (including drafts while typing) | Automatically, whenever online (best-effort) | Manually, on demand |
+| Persistence | Temporary — kept for the retention window, can be cleared | Temporary — kept for the retention window, can be cleared | **Permanent** — this is the only copy you should rely on long-term |
+| Requires internet | No | Yes | No |
 
-이전 세션을 복구할 때(Step 1)는 로컬과 클라우드 백업 중 더 최근에 업데이트된 쪽을 항상 사용하므로, 어느 쪽이 마지막으로 온라인 상태였는지와 관계없이 진행 상황을 잃지 않습니다.
+Restoring a past session (Step 1) always uses whichever of the local or cloud backup is more recently updated, so you never lose progress no matter which one was last online.
 
 ---
 
-## 🏷️ Type 정의
+## 🏷️ Type Definitions
 
-| Type | 의미 |
+| Type | Meaning |
 |---|---|
-| `MH` | Material Handling(자재 취급) — 자재를 이동/보관/취급하는 공정 (예: Unloading, Storaging, Feeding, Loading) |
-| `P` | Production/Process(생산/공정) — 부가가치를 더하는 제조 공정 (예: Molding, Stamping, Welding, 도장, Inspection, Packaging) |
-| `WIP` | Work In Process(공정 중 재공) — 공정 중간에 부품을 취급하는 단계 (예: Remove, Conveyor) |
+| `MH` | Material Handling — moving, storing, or handling material (e.g. Unloading, Moving, Storaging, Feeding, Loading) |
+| `OP` | Operation/Process — a value-adding manufacturing step (e.g. Molding, Stamping, Welding, Painting, Inspection, Packaging) |
+| `WIP` | Work In Process — intermediate handling of parts mid-process (e.g. Remove, Conveyor) |
+
+## 🏭 Line Type Definitions
+
+| Line Type | Meaning |
+|---|---|
+| Shared Line | The line is shared across multiple programs/products — no specific program to note. |
+| Dedicated Line | The line is dedicated to one or more specific programs — use **Program(s) Supported** to note which one(s). |
 
 ---
 
-## ❓ 자주 묻는 질문
+## ❓ FAQ
 
-**Q: 데이터 입력 중에 인터넷이 끊기면 어떻게 되나요?**
-A: 데이터는 손실되지 않습니다. 앱은 평소처럼 로컬 백업에 계속 저장되며 "📴 No internet connection" 안내가 표시되고, 다시 연결되면 자동으로 Google Sheets 동기화를 재개합니다.
+**Q: What happens if I lose internet connection while entering data?**
+A: Nothing is lost. The app keeps saving to the local backup as usual and shows a "📴 No internet connection" notice; once you're back online, it resumes syncing to Google Sheets automatically.
 
-**Q: 앱을 사용하려면 Google Sheets 설정이 반드시 필요한가요?**
-A: 아닙니다. 클라우드 백업은 선택 사항이며, 설정하지 않아도 로컬 백업만으로 앱이 정상적으로 동작합니다.
+**Q: What if I stop typing for a while and the page seems to reset?**
+A: Anything you'd typed for the process you were adding is auto-saved as a local draft as you go (even before you click Save). Open **Step 1 → Restore Selected Session** and pick the most recent backup to pick up right where you left off.
 
-**Q: CSV를 다운로드했는데 시스템 백업이 사라졌나요?**
-A: **"Delete system backup file after download"** 체크박스가 체크된 상태로 다운로드한 경우에만 삭제됩니다(기본값은 체크됨). 어느 경우든 다운로드한 CSV 파일이 이후의 영구 기록이 됩니다.
+**Q: Do I need Google Sheets configured to use the app?**
+A: No. Cloud backup is optional — without it configured, the app runs fully on local backups only.
 
-**Q: 저장한 공정을 나중에 수정할 수 있나요?**
-A: 네 — 해당 항목으로 이동해 항목을 수정한 뒤 **Update Process**를 클릭하면 됩니다. 삭제하려면 **🗑️ Delete**를 사용하세요.
+**Q: I downloaded the CSV — is the system backup gone now?**
+A: Only if you left the **"Delete system backup file after download"** checkbox checked (it's checked by default). Either way, the CSV file you downloaded is the permanent record going forward.
 
----
+**Q: Can I edit a process after saving it?**
+A: Yes — navigate to it and edit the fields, then click **Update Process**. Use **🗑️ Delete** to remove it instead.
 
-## 🔒 보안 관련 안내
-
-- 사이트 화면에는 자격 증명이나 설정 관련 정보가 전혀 표시되지 않으며, 오직 본인이 입력한 평가 데이터만 보입니다.
-- 로컬/클라우드 백업은 세션을 이어서 진행하기 위한 임시 작업본이지 영구 보관용이 아닙니다(위 표 참고). 영구적으로 보관하고 싶은 결과는 CSV로 다운로드해두세요.
-- CSV 파일은 다운로드를 누르는 시점에 즉석에서 생성되며, 본인이 내려받은 파일 외에는 앱 어디에도 별도로 저장되지 않습니다.
+**Q: Why does the export only show one "Program(s) Supported" column instead of separate Line Type and Program(s) Supported columns?**
+A: It's meant to paste cleanly into a single Excel column — Shared Line shows as **"Shared"**, and Dedicated Line shows the program name(s) you entered. The Step 3 input screen still asks for Line Type and Program(s) Supported separately; only the exported summary combines them.
 
 ---
 
-## 📄 라이선스
+## 🔒 Security Notes
+
+- The site never shows any credentials or configuration details in the UI — you only ever see your own evaluation data.
+- Backups (local + cloud) are temporary working copies for resuming a session, not a permanent archive — see the table above. Download the CSV whenever you want a permanent, personal copy of your results.
+- The CSV file is generated on the spot when you click download and isn't stored anywhere else by the app — it only exists in your own download.
+
+---
+
+## 📄 License
 
 MIT License.
