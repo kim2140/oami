@@ -1,8 +1,18 @@
 # =============================================================================
 # Supplier OAMI Evaluation App
-# Version: 2.28.0
+# Version: 2.29.0
 #
 # [버전 히스토리 - 최신순]
+#   v2.29.0 - "결과에 line type을 하나로만 나오게 해줘. shared line을
+#             선택하면 Shared만 나오고 Dedicated line을 선택하면 입력한
+#             program만 나오게. 그래야 엑셀에 옮겨 넣을 수 있다"는 요청에
+#             따라, 모바일 텍스트 요약/PC 표/CSV 내보내기의 "Line Type" +
+#             "Program(s) Supported" 두 컬럼을 "Program(s) Supported" 하나로
+#             합침(Shared Line → "Shared", Dedicated Line → 입력한 값).
+#             Step 2 입력 화면의 라디오+조건부 텍스트 입력 구조와 저장되는
+#             원본 데이터(LineType/ProgramsSupported 키)는 그대로 유지하고,
+#             내보내기 시점에만 하나로 합쳐서 보여줌. 자세한 내용은 아래
+#             [v2.29.0 변경사항] 참고.
 #   v2.28.0 - "dedicated line을 고르면 어떤 프로젝트의 라인인지 넣는거거든
 #             project name으로 하면 좀 혼동될것 같은데"라는 피드백에 따라,
 #             v2.27.0에서 추가한 조건부 입력칸의 이름만 "Project Name"에서
@@ -258,6 +268,22 @@
 # 공급업체 OAMI(Operation Assessment & Management Index) 평가 앱.
 # 프로세스별 Type(MH/P/WIP) 및 PAMI 점수(1~5)를 입력하고
 # Google Sheets(클라우드) + 서버 로컬 파일에 이중 백업.
+#
+# [v2.29.0 변경사항 - 내보내기의 Line Type/Program(s) Supported를 한 컬럼으로 합침]
+#   - 사용자 피드백: "결과에 line type을 하나로만 나오게 해줘 만약 shared
+#     line을 선택하면 Shared만 나오고 Dedicated line을 선택하면 입력한
+#     program만 나오게 그래야 내가 엑셀에 옮겨 넣을 수가 있지."
+#   - Step 2 입력 화면(Line Type 라디오 + Dedicated Line일 때만 보이는
+#     Program(s) Supported 입력칸)과 저장되는 원본 데이터 구조는 전혀 건드리지
+#     않음 — 이번 변경은 모바일 텍스트 요약 / PC 표(Copy Table) / CSV 다운로드,
+#     이 세 곳의 "표시 방식"에만 적용됨.
+#   - df에 "Program(s) Supported"라는 화면 표시용 컬럼을 새로 계산해서 추가:
+#     LineType이 "Shared Line"이면 "Shared", "Dedicated Line"이면 저장된
+#     ProgramsSupported 값(비어 있으면 빈 문자열)을 그대로 사용. 기존의
+#     "Line Type"/"Program(s) Supported" 두 컬럼을 나란히 보여주던 방식을
+#     이 하나의 합쳐진 컬럼으로 대체.
+#   - 세 내보내기(모바일 텍스트, PC 표, CSV) 모두 동일한 합쳐진 컬럼을
+#     사용하도록 통일해서, 어느 쪽을 엑셀에 옮겨도 같은 형태가 되게 함.
 #
 # [v2.28.0 변경사항 - "Project Name" → "Program(s) Supported" 이름 변경]
 #   - 사용자 피드백: "dedicated line을 고르면 어떤 프로젝트의 라인인지
@@ -2408,7 +2434,18 @@ if st.session_state.is_evaluating:
             if col not in df.columns:
                 df[col] = ""
         df[["LineType", "ProgramsSupported"]] = df[["LineType", "ProgramsSupported"]].fillna("")
-        cols = ["Supplier", "Evaluator", "No.", "Process", "LineType", "ProgramsSupported",
+        # [v2.29.0] "결과(모바일 텍스트/PC 표/CSV)에는 Line Type을 하나로만
+        # 나오게 해달라"는 요청: Shared Line이면 "Shared"만, Dedicated Line
+        # 이면 입력한 Program(s) Supported 값만 보이는 단일 컬럼으로 합침
+        # (엑셀로 옮겨 붙이기 편하도록). 입력 화면(Step 2)의 라디오+조건부
+        # 텍스트 입력 구조와 저장되는 원본 데이터(LineType/ProgramsSupported
+        # 키)는 그대로 유지하고, 이 합쳐진 컬럼은 화면 표시/내보내기용으로만
+        # 별도 계산한다.
+        df["Program(s) Supported"] = df.apply(
+            lambda r: "Shared" if r["LineType"] == "Shared Line" else r["ProgramsSupported"],
+            axis=1
+        )
+        cols = ["Supplier", "Evaluator", "No.", "Process", "Program(s) Supported",
                 "Type", "Description", "PAMI", "Remark", "Time"]
         df   = df[cols]
 
@@ -2427,11 +2464,12 @@ if st.session_state.is_evaluating:
             f"Processes: {total_processes} | Avg OAMI: {oami_avg:.2f}\n"
         )
         # [v2.2.1] 컬럼 순서 변경: No. > Process > Description > Type > PAMI > Remark > Time
-        # [v2.27.0] Line Type / Program(s) Supported 컬럼 추가 (Process 바로 뒤)
-        raw_text += "No.|Process|Line Type|Program(s) Supported|Description|Type|PAMI|Remark|Time\n"
+        # [v2.29.0] Line Type/Program(s) Supported를 하나의 "Program(s) Supported"
+        # 컬럼으로 합침 (Shared Line → "Shared", Dedicated Line → 입력한 값)
+        raw_text += "No.|Process|Program(s) Supported|Description|Type|PAMI|Remark|Time\n"
         for _, row in df.iterrows():
             raw_text += (
-                f"{row['No.']}|{row['Process']}|{row['LineType']}|{row['ProgramsSupported']}|"
+                f"{row['No.']}|{row['Process']}|{row['Program(s) Supported']}|"
                 f"{row['Description']}|{row['Type']}|{row['PAMI']}|{row['Remark']}|{row['Time']}\n"
             )
 
@@ -2482,12 +2520,11 @@ if st.session_state.is_evaluating:
                 "You must copy and paste this table manually."
             )
             # [v2.2.1] 컬럼 순서 변경: Description을 Type 앞으로
-            # [v2.27.0] Line Type / Program(s) Supported 컬럼 추가 (Process 바로 뒤)
-            export_cols = ["No.", "Process", "LineType", "ProgramsSupported",
+            # [v2.29.0] Line Type / Program(s) Supported를 "Program(s) Supported"
+            # 하나의 컬럼으로 합침 (Process 바로 뒤)
+            export_cols = ["No.", "Process", "Program(s) Supported",
                             "Description", "Type", "PAMI", "Remark", "Time"]
-            html_table  = df[export_cols].rename(columns={
-                "LineType": "Line Type", "ProgramsSupported": "Program(s) Supported"
-            }).to_html(index=False).replace(
+            html_table  = df[export_cols].to_html(index=False).replace(
                 '<table border="1" class="dataframe">',
                 '<table border="1" cellpadding="8" style="border-collapse:collapse; text-align:left; font-family:Arial; width:100%;">'
             )
@@ -2550,11 +2587,10 @@ if st.session_state.is_evaluating:
             f"Processes: {total_processes} | Avg OAMI: {oami_avg:.2f}\n"
         )
         # [v2.2.1] CSV 컬럼 순서 변경: Description을 Type 앞으로
-        # [v2.27.0] Line Type / Program(s) Supported 컬럼 추가 (Process 바로 뒤)
-        export_df = df[["No.", "Process", "LineType", "ProgramsSupported",
-                         "Description", "Type", "PAMI", "Remark", "Time"]].rename(columns={
-            "LineType": "Line Type", "ProgramsSupported": "Program(s) Supported"
-        })
+        # [v2.29.0] Line Type / Program(s) Supported를 "Program(s) Supported"
+        # 하나의 컬럼으로 합침 (Process 바로 뒤)
+        export_df = df[["No.", "Process", "Program(s) Supported",
+                         "Description", "Type", "PAMI", "Remark", "Time"]]
         csv_data_bytes = (summary_line + export_df.to_csv(index=False)).encode('utf-8-sig')
 
         st.download_button(
