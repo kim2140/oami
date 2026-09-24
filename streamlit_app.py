@@ -1,8 +1,40 @@
 # =============================================================================
 # Supplier OAMI Evaluation App
-# Version: 2.26.0
+# Version: 2.28.0
 #
 # [버전 히스토리 - 최신순]
+#   v2.28.0 - "dedicated line을 고르면 어떤 프로젝트의 라인인지 넣는거거든
+#             project name으로 하면 좀 혼동될것 같은데"라는 피드백에 따라,
+#             v2.27.0에서 추가한 조건부 입력칸의 이름만 "Project Name"에서
+#             "Program(s) Supported"로 변경(UI 구조는 그대로 유지: Line
+#             Type이 "Dedicated Line"일 때만 보이는 선택 입력칸). 처음엔
+#             "Dedicated Project" 등 다른 이름이나, 아예 Line Type 라디오와
+#             이 입력칸을 하나로 합치는 방식도 제안했으나 모두 원하는 방향이
+#             아니었고, 최종적으로 "Program(s) Supported 이걸로 바꿔줘"라는
+#             답을 받아 이름만 바꾸는 것으로 확정. 자세한 내용은 아래
+#             [v2.28.0 변경사항] 참고.
+#   v2.27.0 - 두 가지 요청을 함께 반영.
+#             (1) "Preset이 너무 많아서 고르기 힘들고 번잡하다"는 피드백에
+#             따라 Description Preset 정리: Unloading 바로 다음에 "Moving"
+#             (Type: MH) 추가하고, Process 관련(Type=P) 프리셋 19개 중
+#             Milling·Turning·Piecing·Labeling/Printing·Deburring 5개를
+#             제거해 14개로 축소(어떤 걸 뺄지 미리 제안하고 사용자 확인 후
+#             반영). 도장 단계(Pretreatment~Oven)는 예전에 용어까지 검증해둔
+#             부분이라 그대로 유지. 또한 "Process Type에서 P를 OP로 바꿔
+#             달라"는 요청에 따라 Type 코드 "P"를 "OP"로 전면 변경(Type 선택
+#             라디오, VALID_TYPES, 프리셋 매핑, 대량 업로드 유효성 검사 등
+#             "P"가 쓰이던 모든 곳). 이전에 이미 저장된 백업/CSV의 옛 "P" 값은
+#             그대로 두고, 이 변경 이후 새로 저장되는 값부터 "OP"로 표시됨.
+#             (2) "Process Name과 Description 사이에 공용라인/전용라인을
+#             고르는 항목을 추가해달라"는 요청에 따라 새 필수 항목 "Line
+#             Type"(Shared Line/Dedicated Line 라디오) 추가. Dedicated Line을
+#             고르면 그 아래에 "Project Name"(선택) 입력칸이 나타남. "매번
+#             다시 고르면 번거로울 것 같다"는 이유로, 새 항목을 추가할
+#             때마다 이 값을 비우지 않고 마지막으로 고른 값을 다음 새 항목의
+#             기본값으로 그대로 이어지게 함(그래도 필수 항목이라 값 자체가
+#             없으면 저장은 막힘). 저장되는 데이터, 모바일/PC 요약, CSV
+#             내보내기에도 Line Type/Project Name 컬럼을 Process 바로 뒤에
+#             추가함. 자세한 내용은 아래 [v2.27.0 변경사항] 참고.
 #   v2.26.0 - "Preset에 있는 Description 글을 넣을 때는 뭔가 저장이 안 되는
 #             것 같다"는 피드백에 따라 draft 자동 저장의 사각지대를 수정.
 #             원인: v2.24.0~v2.25.0의 draft 자동 저장은 Description 등 입력
@@ -226,6 +258,75 @@
 # 공급업체 OAMI(Operation Assessment & Management Index) 평가 앱.
 # 프로세스별 Type(MH/P/WIP) 및 PAMI 점수(1~5)를 입력하고
 # Google Sheets(클라우드) + 서버 로컬 파일에 이중 백업.
+#
+# [v2.28.0 변경사항 - "Project Name" → "Program(s) Supported" 이름 변경]
+#   - 사용자 피드백: "dedicated line을 고르면 어떤 프로젝트의 라인인지
+#     넣는거거든 project name으로 하면 좀 혼동될것 같은데."
+#   - v2.27.0에서 만든 구조(Line Type 라디오가 "Dedicated Line"일 때만 그
+#     아래에 조건부로 나타나는 선택 텍스트 입력칸)는 그대로 두고, 그 입력칸의
+#     라벨/변수명/데이터 키만 "Project Name" → "Program(s) Supported"로 변경.
+#   - 변경된 곳: Step 2 입력칸 라벨("Program(s) Supported (Optional)"),
+#     session_state 키(p_project_name_input → p_programs_supported_input),
+#     process_form_submit()의 지역 변수, 저장되는 공정 데이터의 키
+#     ("ProjectName" → "ProgramsSupported"), draft 자동 저장/복원 로직의
+#     draft 키("project_name" → "programs_supported"), 모바일 텍스트 요약/
+#     PC 표/CSV 내보내기의 컬럼명("Project Name" → "Program(s) Supported").
+#   - 예전에 이미 저장된 로컬/클라우드 백업에 남아있는 "ProjectName" 키는
+#     건드리지 않으며, 새 코드는 이런 예전 데이터도 안전하게 읽을 수 있도록
+#     예전 키 유무에 의존하지 않고 항상 .get()으로 조회.
+#
+# [v2.27.0 변경사항 - 프리셋 정리 + Type "P"→"OP" + Line Type/Program(s) Supported 추가]
+#   (1) Description Preset 정리
+#   - 사용자 피드백: "preset이 너무 많아서 고르기 힘들고 번잡해 그걸 좀
+#     정리해야겠어. 일단 Process관련된 내용은 조금 줄여주고 moving을
+#     receiving다음에 넣어주고."
+#   - "Receiving"이라는 프리셋은 없고 제일 앞이 "Unloading"이라 어떻게
+#     반영할지 확인 질문 → "Unloading 옆에 Moving을 추가해달라는 것"이라는
+#     답을 받아, Unloading 바로 다음에 "Moving"(Type: MH) 추가.
+#   - Process(Type=P) 프리셋 19개를 어떻게 줄일지 확인 질문 → "핵심 공정
+#     위주로 추려서 제안"을 선택받아, 다른 항목과 겹치거나 상대적으로 덜
+#     핵심적인 Milling·Turning(가공 세부 공정), Piecing(Stamping과 유사),
+#     Labeling/Printing·Deburring(Finishing/Inspection으로 커버 가능) 5개를
+#     제거 제안 → 사용자 확인 후 그대로 반영(19개 → 14개). 용어까지 따로
+#     검증했던 도장 단계(Pretreatment~Oven)는 건드리지 않음.
+#   (2) Process Type "P" → "OP"
+#   - "process type에서 P를 OP로 바꿔줘"라는 요청에 따라, Type 값 체계에서
+#     "P"를 쓰던 곳을 전부 "OP"로 변경: VALID_TYPES, DESCRIPTION_PRESETS_
+#     WITH_TYPE의 Type 값들, Step 2의 Type 라디오 버튼 옵션, 대량 업로드
+#     Excel 템플릿의 예시 값과 유효성 검사 에러 메시지.
+#   - 이전에 이미 저장된 로컬/클라우드 백업이나 다운로드해둔 CSV에 남아있는
+#     과거 "P" 값은 건드리지 않는다(과거 기록 그대로 보존). 이 변경이
+#     적용된 이후 새로 선택/저장하는 값부터 "OP"로 표시된다.
+#   (3) Line Type(공용라인/전용라인) + Program(s) Supported 추가
+#   - 사용자 요청: "Column이 하나 더 추가되서 공용라인지 전용라인인지 넣는
+#     곳이 있거든... 이게 process와 Description 사이에 있거든. 처음에
+#     셀렉한 거 공용라인인지, 전용라인인지(전용라인 경우 프로젝트 명을 넣을
+#     수 있게) 라디오 버튼으로 다음 process도 default로 정해지게 해주고
+#     이것도 required 걸로."
+#   - Process Name과 Description 사이에 "Line Type - Required*" 라디오
+#     (옵션: "Shared Line" / "Dedicated Line")를 추가. Dedicated Line을
+#     고르면 그 아래에 "Program(s) Supported (Optional)" 텍스트 입력칸이 나타나
+#     프로젝트명을 적을 수 있다(Shared Line이면 이 입력칸 자체가 안 보이고,
+#     저장 시에도 Program(s) Supported 값은 빈 문자열로 저장되어 화면에 없는 값이
+#     몰래 저장되는 일이 없게 했다).
+#   - "매번 넣으면 번거로울 것 같다"는 이유로, sync_form_with_state()가 새
+#     항목을 위해 다른 칸들(Name/Description/Type/Score/Remark)은 비우면서도
+#     Line Type/Program(s) Supported만은 일부러 그대로 둬서, 마지막으로 선택했던
+#     값이 다음 새 항목의 기본값으로 자동으로 이어지게 했다. 그래도 Line
+#     Type은 Required라서, process_form_submit()의 필수값 검사에 추가해
+#     비어있으면 저장이 막히도록 함(에러 메시지도 "Fill in Line Type,
+#     Description, Type, and Score."로 갱신).
+#   - Line Type/Program(s) Supported도 draft 자동 저장 대상에 포함(다른 다섯 칸과
+#     동일하게 on_change=save_draft_local_only를 걸고, _build_backup_
+#     payload_with_draft()와 "Restore Selected Session" 복원 로직에도 추가).
+#   - 저장되는 각 공정 데이터에 "LineType"/"ProgramsSupported" 키를 추가하고,
+#     모바일 텍스트 요약/PC 표/CSV 내보내기 모두에 "Line Type"/"Program(s)
+#     Supported" 컬럼을 Process 바로 뒤에 추가함. 대량 업로드(Excel)는 아직 이
+#     두 항목을 받지 않으므로 빈 값으로 채워서 다른 항목들과 데이터 구조를
+#     맞춤(요청 범위에 없었으므로 Excel 템플릿 자체는 바꾸지 않음). 이 필드가
+#     생기기 전에 저장된 예전 백업에는 LineType/ProgramsSupported 키가 없을 수
+#     있어 전부 .get()으로 안전하게 조회하고, 내보내기 시에도 빈 컬럼을
+#     보충해서 "nan"이 찍히지 않게 함.
 #
 # [v2.26.0 변경사항 - 프리셋/Clear로 바뀐 Description도 draft에 반영]
 #   - 사용자 피드백: "Preset에 있는 Description 글을 넣을 때는 뭔가 저장이
@@ -874,7 +975,10 @@ if not os.path.exists(BACKUP_DIR):
     os.makedirs(BACKUP_DIR)
 
 # 유효값 상수
-VALID_TYPES  = {"MH", "P", "WIP"}
+# [v2.27.0] "Process Type에서 P를 OP로 바꿔달라"는 요청에 따라 변경. 기존에
+# 이미 저장된 백업/CSV에 남아있는 옛 "P" 값은 그대로 두고(과거 기록은
+# 건드리지 않음), 이 변경 이후 새로 선택/저장되는 값부터 "OP"로 표시된다.
+VALID_TYPES  = {"MH", "OP", "WIP"}
 VALID_SCORES = {1, 2, 3, 4, 5}
 
 # =====================================================================
@@ -917,37 +1021,46 @@ VALID_SCORES = {1, 2, 3, 4, 5}
 # 추가. 전체 순서를 "자재 투입 → 가공 → 조립/용접 → 도장 → 마무리/품질 →
 # 포장" 흐름으로 재배치하고, Unloading(입고 하역)은 맨 앞, Loading(출하
 # 상차)은 Packaging 바로 뒤 맨 끝으로 이동.
+# [v2.27.0] "Preset이 너무 많아서 고르기 번잡하다"는 피드백에 따라 정리.
+#   1) "Unloading 옆에 Moving을 추가해달라"는 요청에 따라 Unloading 바로
+#      다음에 "Moving"(Type: MH) 추가.
+#   2) Process(Type=P, 아래에서 "OP"로 이름이 바뀜) 관련 프리셋 19개 중,
+#      다른 항목과 겹치거나 상대적으로 덜 핵심적인 5개를 제거해 14개로 축소:
+#      Milling·Turning(가공 세부 공정 — Trimming/Molding과 겹침),
+#      Piecing(Stamping과 유사한 세부 공정), Labeling/Printing·Deburring
+#      (마무리 세부 작업 — Finishing/Inspection으로 충분히 커버됨). 도장
+#      단계(Pretreatment~Oven)는 예전에 용어까지 검증해둔 부분이라 그대로
+#      유지. 사용자에게 어떤 5개를 뺄지 미리 보여주고 확인받은 뒤 반영함.
+#   3) "Process Type에서 P를 OP로 바꿔달라"는 요청에 따라, 이 목록의 Type
+#      값도 전부 "P" → "OP"로 변경(VALID_TYPES 등 다른 곳도 함께 변경 —
+#      자세한 내용은 파일 상단 [v2.27.0 변경사항] 참고).
 #
 # 목록은 아래에 (공정명, Type) 형태로 한 줄에 하나씩 적으면 됩니다.
-# Type은 반드시 "MH" / "P" / "WIP" 셋 중 하나로 적어야 합니다.
+# Type은 반드시 "MH" / "OP" / "WIP" 셋 중 하나로 적어야 합니다.
 # 필요하면 자유롭게 추가/삭제/수정해서 쓰세요.
 # =====================================================================
 DESCRIPTION_PRESETS_WITH_TYPE = [
     ("Unloading", "MH"),
+    ("Moving", "MH"),
     ("Storaging", "MH"),
     ("Feeding", "MH"),
     ("Replenishing", "MH"),
-    ("Molding", "P"),
-    ("Trimming", "P"),
-    ("Milling", "P"),
-    ("Turning", "P"),
-    ("Stamping", "P"),
-    ("Piecing", "P"),
+    ("Molding", "OP"),
+    ("Trimming", "OP"),
+    ("Stamping", "OP"),
     ("Remove", "WIP"),
     ("Conveyor", "WIP"),
-    ("Heat Treatment", "P"),
-    ("Assembly", "P"),
-    ("Welding", "P"),
-    ("Pretreatment", "P"),
-    ("Primer", "P"),
-    ("Intermediate Coat", "P"),
-    ("Top Coat", "P"),
-    ("Oven", "P"),
-    ("Labeling/Printing", "P"),
-    ("Deburring", "P"),
-    ("Finishing", "P"),
-    ("Inspection", "P"),
-    ("Packaging", "P"),
+    ("Heat Treatment", "OP"),
+    ("Assembly", "OP"),
+    ("Welding", "OP"),
+    ("Pretreatment", "OP"),
+    ("Primer", "OP"),
+    ("Intermediate Coat", "OP"),
+    ("Top Coat", "OP"),
+    ("Oven", "OP"),
+    ("Finishing", "OP"),
+    ("Inspection", "OP"),
+    ("Packaging", "OP"),
     ("Loading", "MH"),
 ]
 # 기존 코드(selectbox 등)와의 호환을 위해 이름만 뽑은 리스트도 함께 준비
@@ -1265,13 +1378,16 @@ def _build_backup_payload_with_draft():
     draft = None
     if st.session_state.get("is_inserting", False):
         draft = {
-            "name":   st.session_state.get("p_name_input", "") or "",
-            "desc":   st.session_state.get("p_desc_input", "") or "",
-            "type":   st.session_state.get("p_type_input"),
-            "score":  st.session_state.get("p_score_input"),
-            "remark": st.session_state.get("p_remark_input", "") or "",
+            "name":         st.session_state.get("p_name_input", "") or "",
+            # [v2.27.0] Line Type/Program(s) Supported도 draft에 포함
+            "line_type":    st.session_state.get("p_line_type_input"),
+            "programs_supported": st.session_state.get("p_programs_supported_input", "") or "",
+            "desc":         st.session_state.get("p_desc_input", "") or "",
+            "type":         st.session_state.get("p_type_input"),
+            "score":        st.session_state.get("p_score_input"),
+            "remark":       st.session_state.get("p_remark_input", "") or "",
         }
-        # 다섯 칸이 전부 비어있으면 저장할 draft가 없는 것과 같음
+        # 모든 칸이 전부 비어있으면 저장할 draft가 없는 것과 같음
         if not any(draft.values()):
             draft = None
 
@@ -1571,18 +1687,36 @@ def reindex_processes():
 # 폼 네비게이션 및 상태 동기화
 # =====================================================================
 def sync_form_with_state():
+    """[v2.27.0] Line Type/Program(s) Supported 관련 동작 추가:
+    - "기존 항목 편집" 모드로 들어갈 때는 그 항목에 저장된 LineType/
+      ProgramsSupported을 그대로 보여준다(다른 필드들과 동일한 패턴).
+    - "새 항목 입력" 모드로 들어갈 때는 Process Name/Description/Type/Score/
+      Remark와 달리 p_line_type_input/p_programs_supported_input을 일부러 비우지
+      않는다. "공용/전용 라인은 보통 여러 공정에 걸쳐 똑같이 유지되는데
+      매번 다시 고르면 번거롭다"는 요청에 따라, 마지막으로 선택했던 값이
+      다음 새 항목의 기본값으로 그대로 이어지게 하기 위함(그래도 Line Type은
+      Required라서 비어있으면 저장 시 process_form_submit()에서 막는다)."""
     if st.session_state.is_inserting:
         st.session_state.p_name_input  = ""
         st.session_state.p_desc_input  = ""
         st.session_state.p_type_input  = None
         st.session_state.p_score_input = None
         st.session_state.p_remark_input = ""
+        # p_line_type_input / p_programs_supported_input은 의도적으로 건드리지
+        # 않음 — 위 설명 참고.
     else:
         plist = st.session_state.process_list
         idx   = st.session_state.nav_index
         if len(plist) > 0 and 0 <= idx < len(plist):
             p = plist[idx]
             st.session_state.p_name_input   = p["Process"] if p["Process"] != "N/A" else ""
+            # [v2.27.0] 구버전 백업(이 필드가 생기기 전에 저장된 항목)에는
+            # LineType/ProgramsSupported 키가 없을 수 있으므로 .get()으로 안전하게 조회
+            st.session_state.p_line_type_input    = p.get("LineType")
+            # [v2.28.0] "ProgramsSupported" 키가 없는 항목 중, 이름 변경 전
+            # (v2.27.0)의 예전 키 "ProjectName"이 남아있다면 그 값을 대신 사용
+            # (복구 시점에 이미 옮겨지지만, 혹시 모를 경우를 대비한 이중 안전장치).
+            st.session_state.p_programs_supported_input = p.get("ProgramsSupported", p.get("ProjectName", ""))
             st.session_state.p_desc_input   = p["Description"]
             st.session_state.p_type_input   = p["Type"]
             st.session_state.p_score_input  = p["PAMI"]
@@ -1595,6 +1729,7 @@ def sync_form_with_state():
             st.session_state.p_type_input   = None
             st.session_state.p_score_input  = None
             st.session_state.p_remark_input = ""
+            # p_line_type_input / p_programs_supported_input은 여기서도 건드리지 않음
     st.session_state.show_delete_confirm = False
     st.session_state.pami_form_error     = ""
 
@@ -1756,14 +1891,24 @@ def clear_description_field():
 
 
 def process_form_submit():
-    p_name   = st.session_state.p_name_input
-    p_desc   = st.session_state.p_desc_input
-    p_type   = st.session_state.p_type_input
-    p_score  = st.session_state.p_score_input
-    p_remark = st.session_state.p_remark_input
+    p_name      = st.session_state.p_name_input
+    p_line_type = st.session_state.p_line_type_input
+    p_desc      = st.session_state.p_desc_input
+    p_type      = st.session_state.p_type_input
+    p_score     = st.session_state.p_score_input
+    p_remark    = st.session_state.p_remark_input
+    # [v2.27.0] Program(s) Supported은 Dedicated Line일 때만 의미가 있는 값이므로,
+    # Shared Line인데 예전에 입력해뒀던 값이 session_state에 남아있어도
+    # 그건 저장하지 않는다(화면에는 Dedicated Line일 때만 입력칸 자체가
+    # 보이므로, 안 보이는 값이 저장에는 반영되는 걸 막기 위함).
+    p_programs_supported = (
+        st.session_state.get("p_programs_supported_input", "")
+        if p_line_type == "Dedicated Line" else ""
+    )
 
-    if not p_desc or p_type is None or p_score is None:
-        st.session_state.pami_form_error = "🚨 Fill in Description, Type, and Score."
+    # [v2.27.0] "Line Type도 필수로 해달라"는 요청에 따라 필수 항목에 추가
+    if not p_desc or p_line_type is None or p_type is None or p_score is None:
+        st.session_state.pami_form_error = "🚨 Fill in Line Type, Description, Type, and Score."
         return
 
     st.session_state.pami_form_error = ""
@@ -1772,15 +1917,17 @@ def process_form_submit():
         target_idx        = st.session_state.nav_index + 1
         is_appending_at_end = (target_idx == len(st.session_state.process_list))
         new_process = {
-            "Supplier":   st.session_state.master_info["supplier"],
-            "Evaluator":  st.session_state.master_info["evaluator"],
-            "No.":        0,
-            "Process":    p_name if p_name else "N/A",
-            "Type":       p_type,
+            "Supplier":    st.session_state.master_info["supplier"],
+            "Evaluator":   st.session_state.master_info["evaluator"],
+            "No.":         0,
+            "Process":     p_name if p_name else "N/A",
+            "LineType":    p_line_type,      # [v2.27.0]
+            "ProgramsSupported": p_programs_supported,   # [v2.27.0]
+            "Type":        p_type,
             "Description": p_desc,
-            "PAMI":       p_score,
-            "Remark":     p_remark if p_remark else "",
-            "Time":       datetime.now().strftime("%H:%M:%S")
+            "PAMI":        p_score,
+            "Remark":      p_remark if p_remark else "",
+            "Time":        datetime.now().strftime("%H:%M:%S")
         }
         st.session_state.process_list.insert(target_idx, new_process)
         reindex_processes()
@@ -1791,6 +1938,8 @@ def process_form_submit():
         idx = st.session_state.nav_index
         p   = st.session_state.process_list[idx]
         p["Process"]     = p_name if p_name else "N/A"
+        p["LineType"]    = p_line_type      # [v2.27.0]
+        p["ProgramsSupported"] = p_programs_supported   # [v2.27.0]
         p["Description"] = p_desc
         p["Type"]        = p_type
         p["PAMI"]        = p_score
@@ -1863,6 +2012,15 @@ with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=not st.sessi
                     restored_data = backup_options[selected_backup]
                     st.session_state.master_info  = restored_data['info']
                     st.session_state.process_list = restored_data['list']
+                    # [v2.28.0] "Project Name" → "Program(s) Supported" 이름
+                    # 변경 이전(v2.27.0)에 저장된 백업에는 새 키
+                    # "ProgramsSupported" 대신 예전 키 "ProjectName"이 들어
+                    # 있을 수 있으므로, 복구 시점에 한 번 옮겨서 이후 로직은
+                    # 항상 "ProgramsSupported" 키만 신경 쓰면 되게 함(값 손실
+                    # 방지).
+                    for _p in st.session_state.process_list:
+                        if "ProgramsSupported" not in _p and "ProjectName" in _p:
+                            _p["ProgramsSupported"] = _p.get("ProjectName", "")
                     st.session_state.is_evaluating         = True
                     st.session_state.stop_backup           = False
                     st.session_state.download_action_status = None
@@ -1876,6 +2034,9 @@ with st.expander("📌 Step 1: Supplier & Evaluator Info", expanded=not st.sessi
                     draft = restored_data.get('draft')
                     if draft:
                         st.session_state.p_name_input   = draft.get("name", "") or ""
+                        # [v2.27.0] Line Type/Program(s) Supported도 draft에서 복원
+                        st.session_state.p_line_type_input    = draft.get("line_type")
+                        st.session_state.p_programs_supported_input = draft.get("programs_supported", "") or ""
                         st.session_state.p_desc_input   = draft.get("desc", "") or ""
                         st.session_state.p_type_input   = draft.get("type")
                         st.session_state.p_score_input  = draft.get("score")
@@ -1941,7 +2102,7 @@ if st.session_state.is_evaluating:
         template_df = pd.DataFrame({
             "Process Name": ["Assembly 1", "Testing"],
             "Description":  ["Engine assembly", "Final check"],
-            "Type":         ["MH", "P"],
+            "Type":         ["MH", "OP"],  # [v2.27.0] "P" → "OP"
             "Score":        [4, 5],
             "Remark":       ["Routine check", "Critical step"]
         })
@@ -1978,7 +2139,8 @@ if st.session_state.is_evaluating:
                             raw_type = str(row.get("Type", "")).strip().upper()
                             if raw_type not in VALID_TYPES:
                                 skipped_rows.append(
-                                    f"Row {row_idx + 2}: Type '{row.get('Type')}' is invalid (MH/P/WIP only)"
+                                    # [v2.27.0] "P" → "OP"
+                                    f"Row {row_idx + 2}: Type '{row.get('Type')}' is invalid (MH/OP/WIP only)"
                                 )
                                 continue
                             try:
@@ -1995,6 +2157,11 @@ if st.session_state.is_evaluating:
                                 "Evaluator":   st.session_state.master_info["evaluator"],
                                 "No.":         0,
                                 "Process":     str(row.get("Process Name", "N/A")) if pd.notna(row.get("Process Name")) else "N/A",
+                                # [v2.27.0] Line Type/Program(s) Supported은 아직 Excel 템플릿에 없는
+                                # 항목이라 대량 업로드로는 채울 수 없음 — 다른 항목들과
+                                # 딕셔너리 구조(키 목록)를 맞추기 위해 빈 값으로 채워둠.
+                                "LineType":    "",
+                                "ProgramsSupported": "",
                                 "Type":        raw_type,
                                 "Description": str(desc).strip(),
                                 "PAMI":        raw_score,
@@ -2144,6 +2311,29 @@ if st.session_state.is_evaluating:
         # save_draft_local_only() 함수 주석과 파일 상단 [v2.25.0 변경사항]
         # 참고.
         st.text_input("Process Name (Optional)", key="p_name_input", on_change=save_draft_local_only)
+
+        # [v2.27.0] "Process Name과 Description 사이에 공용라인/전용라인을
+        # 고르는 칸을 추가해달라"는 요청에 따라 추가. 전용라인인 경우에는
+        # 프로젝트명도 적을 수 있게 추가 입력칸을 함께 보여준다.
+        # - 이 값을 "매번 입력하면 번거로울 것 같다"는 이유로, 새 항목을
+        #   추가할 때마다 값을 비우지 않고 "마지막으로 고른 값을 기본값으로
+        #   이어서 사용"하도록 함(자세한 내용은 sync_form_with_state() 참고).
+        #   그래도 필수 항목(Required)이라 값 자체는 항상 채워져 있어야 한다.
+        # - 다른 입력칸과 마찬가지로 on_change=save_draft_local_only를 걸어
+        #   draft 자동 저장 대상에도 포함시켰다.
+        st.write("Line Type - Required*")
+        st.radio(
+            "Line Type", options=["Shared Line", "Dedicated Line"], index=None,
+            horizontal=True, label_visibility="collapsed", key="p_line_type_input",
+            on_change=save_draft_local_only
+        )
+        if st.session_state.get("p_line_type_input") == "Dedicated Line":
+            st.text_input(
+                "Program(s) Supported (Optional)", key="p_programs_supported_input",
+                on_change=save_draft_local_only,
+                help="Only used for a Dedicated Line — the project this line is dedicated to."
+            )
+
         # [v2.22.0] "Clear Description 버튼이 너무 커서 실수로 누를 것 같다"는
         # 피드백에 따라, Description 아래에 있던 가로로 긴 버튼(글자+아이콘)을
         # 없애고 휴지통 아이콘만 있는 작은 버튼으로 교체(처음엔 st.columns로
@@ -2170,7 +2360,8 @@ if st.session_state.is_evaluating:
         )
 
         st.write("Type - Required*")
-        st.radio("Type", options=["MH", "P", "WIP"], index=None, horizontal=True,
+        # [v2.27.0] "P" → "OP"로 변경
+        st.radio("Type", options=["MH", "OP", "WIP"], index=None, horizontal=True,
                  label_visibility="collapsed", key="p_type_input", on_change=save_draft_local_only)
         st.write("Score (1~5) - Required*")
         st.radio("Score", options=[1, 2, 3, 4, 5], index=None, horizontal=True,
@@ -2208,8 +2399,17 @@ if st.session_state.is_evaluating:
         st.write("---")
         st.markdown("**📊 Evaluation Summary**")
 
-        df   = pd.DataFrame(st.session_state.process_list)
-        cols = ["Supplier", "Evaluator", "No.", "Process", "Type", "Description", "PAMI", "Remark", "Time"]
+        df = pd.DataFrame(st.session_state.process_list)
+        # [v2.27.0] Line Type/Program(s) Supported 컬럼 추가(Process와 Description 사이,
+        # Step 2 입력 순서와 동일하게). 이 필드가 생기기 전에 저장된 예전
+        # 백업에는 이 키들이 아예 없을 수 있으므로, 없으면 빈 컬럼을 만들고
+        # 빈 값은 보기 좋게 ""로 통일한다(화면/내보내기에 "nan"이 찍히는 것 방지).
+        for col in ("LineType", "ProgramsSupported"):
+            if col not in df.columns:
+                df[col] = ""
+        df[["LineType", "ProgramsSupported"]] = df[["LineType", "ProgramsSupported"]].fillna("")
+        cols = ["Supplier", "Evaluator", "No.", "Process", "LineType", "ProgramsSupported",
+                "Type", "Description", "PAMI", "Remark", "Time"]
         df   = df[cols]
 
         oami_avg        = df["PAMI"].mean()
@@ -2227,11 +2427,12 @@ if st.session_state.is_evaluating:
             f"Processes: {total_processes} | Avg OAMI: {oami_avg:.2f}\n"
         )
         # [v2.2.1] 컬럼 순서 변경: No. > Process > Description > Type > PAMI > Remark > Time
-        raw_text += "No.|Process|Description|Type|PAMI|Remark|Time\n"
+        # [v2.27.0] Line Type / Program(s) Supported 컬럼 추가 (Process 바로 뒤)
+        raw_text += "No.|Process|Line Type|Program(s) Supported|Description|Type|PAMI|Remark|Time\n"
         for _, row in df.iterrows():
             raw_text += (
-                f"{row['No.']}|{row['Process']}|{row['Description']}|"
-                f"{row['Type']}|{row['PAMI']}|{row['Remark']}|{row['Time']}\n"
+                f"{row['No.']}|{row['Process']}|{row['LineType']}|{row['ProgramsSupported']}|"
+                f"{row['Description']}|{row['Type']}|{row['PAMI']}|{row['Remark']}|{row['Time']}\n"
             )
 
         tab_mobile, tab_pc = st.tabs(["📱 1. Mobile (Text)", "🖥️ 2. PC (Table)"])
@@ -2281,8 +2482,12 @@ if st.session_state.is_evaluating:
                 "You must copy and paste this table manually."
             )
             # [v2.2.1] 컬럼 순서 변경: Description을 Type 앞으로
-            export_cols = ["No.", "Process", "Description", "Type", "PAMI", "Remark", "Time"]
-            html_table  = df[export_cols].to_html(index=False).replace(
+            # [v2.27.0] Line Type / Program(s) Supported 컬럼 추가 (Process 바로 뒤)
+            export_cols = ["No.", "Process", "LineType", "ProgramsSupported",
+                            "Description", "Type", "PAMI", "Remark", "Time"]
+            html_table  = df[export_cols].rename(columns={
+                "LineType": "Line Type", "ProgramsSupported": "Program(s) Supported"
+            }).to_html(index=False).replace(
                 '<table border="1" class="dataframe">',
                 '<table border="1" cellpadding="8" style="border-collapse:collapse; text-align:left; font-family:Arial; width:100%;">'
             )
@@ -2345,7 +2550,11 @@ if st.session_state.is_evaluating:
             f"Processes: {total_processes} | Avg OAMI: {oami_avg:.2f}\n"
         )
         # [v2.2.1] CSV 컬럼 순서 변경: Description을 Type 앞으로
-        export_df     = df[["No.", "Process", "Description", "Type", "PAMI", "Remark", "Time"]]
+        # [v2.27.0] Line Type / Program(s) Supported 컬럼 추가 (Process 바로 뒤)
+        export_df = df[["No.", "Process", "LineType", "ProgramsSupported",
+                         "Description", "Type", "PAMI", "Remark", "Time"]].rename(columns={
+            "LineType": "Line Type", "ProgramsSupported": "Program(s) Supported"
+        })
         csv_data_bytes = (summary_line + export_df.to_csv(index=False)).encode('utf-8-sig')
 
         st.download_button(
